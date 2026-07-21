@@ -95,13 +95,13 @@ with tab2:
     df = pd.read_sql_query("SELECT * FROM timecards", conn)
     
     if not df.empty:
-        df["Total Salary ($)"] = df["hours_worked"] * df["hourly_rate"]
-        
-        summary_df = df.groupby("employee").agg(
-            Total_Hours=("hours_worked", "sum"),
-            Hourly_Rate=("hourly_rate", "first"),
-            Total_Salary=("Total Salary ($)", "sum")
-        ).reset_index()
+        df["Total Salary (SAR)"] = df["hours_worked"] * df["hourly_rate"]
+
+summary_df = df.groupby("employee").agg(
+    Total_Hours=("hours_worked", "sum"),
+    Hourly_Rate=("hourly_rate", "first"),
+    Total_Salary=("Total Salary (SAR)", "sum")
+).reset_index()
         
         c1, c2 = st.columns(2)
         with c1:
