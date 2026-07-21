@@ -379,22 +379,27 @@ with tab3:
     all_employees = ["All Employees"] + get_employee_list()
     selected_emp = st.selectbox("🔍 Filter by Employee Name", all_employees, key="history_emp_select")
     
-    # Fetch Data
+    # Fetch Data sorted by date ASCENDING (1st July, 2nd July, 3rd July...)
     if selected_emp == "All Employees":
-        df_raw = pd.read_sql_query("SELECT * FROM timecards_v3 ORDER BY work_date DESC", conn)
+        df_raw = pd.read_sql_query("SELECT * FROM timecards_v3 ORDER BY work_date ASC", conn)
     else:
         df_raw = pd.read_sql_query(
-            "SELECT * FROM timecards_v3 WHERE employee = ? ORDER BY work_date DESC", 
+            "SELECT * FROM timecards_v3 WHERE employee = ? ORDER BY work_date ASC", 
             conn, 
             params=(selected_emp,)
         )
     
     if not df_raw.empty:
-        # 1. REMOVE ID COLUMN AND RESET INDEX (Start clean at 1, 2, 3...)
-        df_display = df_raw.drop(columns=["id", "total_hours"], errors="ignore").reset_index(drop=True)
-        df_display.index = df_display.index + 1  # 1-based sequential indexing
+        df_display = df_raw.drop(columns=["total_hours"], errors="ignore").reset_index(drop=True)
+        
+        # 1. MAKE ID CONTINUOUS & SEQUENTIAL (1, 2, 3...)
+        df_display["id"] = range(1, len(df_display) + 1)
+        
+        # Reorder columns so ID comes first
+        cols = ["id", "employee", "work_date", "m_in", "m_out", "e_in", "e_out"]
+        df_display = df_display[cols]
 
-        # 2. DYNAMICALLY CALCULATE TOTAL HOURS FOR FILTERED RECORDS
+        # 2. DYNAMICALLY CALCULATE TOTAL HOURS
         calculated_hours = df_display.apply(calculate_row_hours, axis=1)
         total_hours_sum = calculated_hours.sum()
 
@@ -402,6 +407,7 @@ with tab3:
         edited_df = st.data_editor(
             df_display,
             column_config={
+                "id": st.column_config.NumberColumn("ID", disabled=True),
                 "employee": "Employee",
                 "work_date": "Date",
                 "m_in": "M. In",
@@ -411,7 +417,8 @@ with tab3:
             },
             num_rows="dynamic",
             key="timecard_editor",
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True
         )
         
         st.write("")
