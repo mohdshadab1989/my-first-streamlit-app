@@ -321,7 +321,19 @@ with tab2:
 with tab3:
     st.subheader("3-Month Shift Log & Manual Edits")
     
-    df_raw = pd.read_sql_query("SELECT * FROM timecards_v3 ORDER BY work_date DESC", conn)
+    # Employee Filter
+    all_employees = ["All Employees"] + get_employee_list()
+    selected_emp = st.selectbox("🔍 Filter by Employee Name", all_employees)
+    
+    # Fetch Data
+    if selected_emp == "All Employees":
+        df_raw = pd.read_sql_query("SELECT * FROM timecards_v3 ORDER BY work_date DESC", conn)
+    else:
+        df_raw = pd.read_sql_query(
+            "SELECT * FROM timecards_v3 WHERE employee = ? ORDER BY work_date DESC", 
+            conn, 
+            params=(selected_emp,)
+        )
     
     if not df_raw.empty:
         edited_df = st.data_editor(
@@ -342,14 +354,25 @@ with tab3:
         )
         
         if st.button("Save Changes to Database"):
-            c.execute("DELETE FROM timecards_v3")
-            for _, row in edited_df.iterrows():
-                c.execute('''
-                    INSERT INTO timecards_v3 (id, employee, work_date, m_in, m_out, e_in, e_out, total_hours)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (row['id'], row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+            if selected_emp == "All Employees":
+                # Update all entries
+                c.execute("DELETE FROM timecards_v3")
+                for _, row in edited_df.iterrows():
+                    c.execute('''
+                        INSERT INTO timecards_v3 (id, employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (row['id'], row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+            else:
+                # Update only selected employee entries
+                c.execute("DELETE FROM timecards_v3 WHERE employee = ?", (selected_emp,))
+                for _, row in edited_df.iterrows():
+                    c.execute('''
+                        INSERT INTO timecards_v3 (id, employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (row['id'], row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+            
             conn.commit()
             st.success("Database updated successfully!")
             st.rerun()
     else:
-        st.info("No records to display.")
+        st.info(f"No records found for {selected_emp}.")
