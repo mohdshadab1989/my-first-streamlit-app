@@ -1,94 +1,221 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
+from datetime import datetime, date, timedelta
 
-# Page setup for mobile responsiveness
-st.set_page_config(page_title="Employee Hours & Pay", layout="centered")
+# --- Page Configuration ---
+st.set_page_config(
+    page_title="Al Fanateer Studio - Timecard & Payroll", 
+    page_icon="📷",
+    layout="centered"
+)
 
-st.title("⏱️ Employee Hours & Salary Report")
-st.write("Track working hours and calculate salaries.")
-
-# --- Sample Data / Input ---
-# Sample employee dataset (In production, this can be linked to a database or CSV)
-data = {
-    "Employee": ["Alex Johnson", "Sam Lee", "Priya Patel", "Jordan Smith"],
-    "Role": ["Developer", "Designer", "Manager", "Support Specialist"],
-    "Hours Worked": [160, 145, 175, 150],  # total hours in a month/period
-    "Hourly Rate ($)": [35.0, 30.0, 45.0, 25.0]
-}
-
-df = pd.DataFrame(data)
-
-# --- Overtime Settings Sidebar ---
-st.sidebar.header("Settings")
-overtime_threshold = st.sidebar.number_input("Standard Hours Limit", value=160, step=5)
-overtime_multiplier = st.sidebar.slider("Overtime Rate Multiplier", 1.0, 2.0, 1.5, 0.1)
-
-# --- Salary Calculation Logic ---
-def calculate_salary(row):
-    hours = row["Hours Worked"]
-    rate = row["Hourly Rate ($)"]
+# --- Custom Styling (Gold & Dark Theme) ---
+st.markdown("""
+    <style>
+    /* Global Styling */
+    .stApp {
+        background-color: #0E1117;
+        color: #F0F2F6;
+    }
     
-    if hours <= overtime_threshold:
-        regular_pay = hours * rate
-        overtime_pay = 0.0
-    else:
-        regular_pay = overtime_threshold * rate
-        overtime_hours = hours - overtime_threshold
-        overtime_pay = overtime_hours * (rate * overtime_multiplier)
-        
-    total_pay = regular_pay + overtime_pay
-    return pd.Series([regular_pay, overtime_pay, total_pay])
-
-df[["Regular Pay ($)", "Overtime Pay ($)", "Total Salary ($)"]] = df.apply(calculate_salary, axis=1)
-
-# --- Summary Metrics ---
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Total Hours Logged", f"{df['Hours Worked'].sum()} hrs")
-with col2:
-    st.metric("Total Payroll", f"${df['Total Salary ($)'].sum():,.2f}")
-
-st.markdown("---")
-
-# --- Employee Filter & Individual View ---
-st.subheader("📋 Detailed Employee Breakdown")
-
-selected_employee = st.selectbox("Select Employee to view:", ["All"] + list(df["Employee"]))
-
-if selected_employee != "All":
-    emp_data = df[df["Employee"] == selected_employee].iloc[0]
+    /* Header Container */
+    .header-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #D4AF37;
+        margin-bottom: 25px;
+    }
+    .header-title {
+        color: #D4AF37;
+        font-family: 'Georgia', serif;
+        font-weight: bold;
+        font-size: 26px;
+        margin-top: 10px;
+        margin-bottom: 0px;
+        letter-spacing: 1.5px;
+    }
+    .header-tagline {
+        color: #C0C0C0;
+        font-size: 13px;
+        font-style: italic;
+        margin-top: 2px;
+    }
     
-    st.info(f"**{emp_data['Employee']}** — {emp_data['Role']}")
+    /* Metric Cards Styling */
+    div[data-testid="stMetric"] {
+        background-color: #1A1D24;
+        border: 1px solid #D4AF37;
+        border-radius: 10px;
+        padding: 12px;
+    }
+    div[data-testid="stMetricLabel"] > label {
+        color: #D4AF37 !important;
+        font-weight: 600;
+    }
     
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Hours Worked", f"{emp_data['Hours Worked']} hrs")
-    c2.metric("Hourly Rate", f"${emp_data['Hourly Rate ($)']:.2f}")
-    c3.metric("Total Pay", f"${emp_data['Total Salary ($)']:.2f}")
-    
-    st.caption(f"Includes ${emp_data['Regular Pay ($)']:.2f} regular pay + ${emp_data['Overtime Pay ($)']:.2f} overtime.")
-else:
-    # Full Table View
-    st.dataframe(
-        df[["Employee", "Role", "Hours Worked", "Hourly Rate ($)", "Total Salary ($)"]],
-        use_container_width=True,
-        hide_index=True
+    /* Custom Button Styling */
+    .stButton > button {
+        background-color: #D4AF37;
+        color: #0E1117;
+        font-weight: bold;
+        border-radius: 8px;
+        border: none;
+        width: 100%;
+    }
+    .stButton > button:hover {
+        background-color: #FFD700;
+        color: #000000;
+    }
+    </style>
+""", unsafe_allow_shortcut=True)
+
+# --- Header Section with Logo ---
+st.markdown("""
+    <div class="header-container">
+        <h1 class="header-title">AL FANATEER STUDIO</h1>
+        <p class="header-tagline">SINCE 1995 • "COME ONCE STAY FOREVER"</p>
+    </div>
+""", unsafe_allow_shortcut=True)
+
+# Optionally display the logo image centered if available in repository
+try:
+    st.image("LOGO.jpg", width=140)
+except Exception:
+    pass
+
+st.caption("⏱️ Employee Timecard & Payroll Management")
+
+# --- Database Setup (SQLite) ---
+conn = sqlite3.connect("timesheets.db", check_same_thread=False)
+c = conn.cursor()
+
+c.execute('''
+    CREATE TABLE IF NOT EXISTS timecards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee TEXT,
+        hourly_rate REAL,
+        work_date TEXT,
+        time_in TEXT,
+        time_out TEXT,
+        hours_worked REAL
     )
+''')
+conn.commit()
 
-st.markdown("---")
+# --- Auto Cleanup: Delete records older than 90 days (3 months) ---
+three_months_ago = (date.today() - timedelta(days=90)).strftime("%Y-%m-%d")
+c.execute("DELETE FROM timecards WHERE work_date < ?", (three_months_ago,))
+conn.commit()
 
-# --- Interactive Salary Calculator for Quick Checks ---
-st.subheader("🧮 Quick Pay Calculator")
+# --- Tab Navigation for Mobile ---
+tab1, tab2, tab3 = st.tabs(["➕ Log / Edit Time", "📊 Hours & Salary", "📜 3-Month Logs"])
 
-calc_hours = st.number_input("Enter Hours Worked:", min_value=0.0, value=40.0, step=1.0)
-calc_rate = st.number_input("Enter Hourly Rate ($):", min_value=0.0, value=25.0, step=0.50)
+# ---------------------------------------------------------
+# TAB 1: Log or Edit Entry
+# ---------------------------------------------------------
+with tab1:
+    st.subheader("Clock In / Out Entry")
+    
+    with st.form("time_entry_form", clear_on_submit=True):
+        emp_name = st.text_input("Employee Name", placeholder="e.g. Alex Johnson")
+        hourly_rate = st.number_input("Hourly Rate ($)", min_value=0.0, value=25.0, step=0.50)
+        entry_date = st.date_input("Date", value=date.today())
+        
+        col_in, col_out = st.columns(2)
+        with col_in:
+            time_in = st.time_input("Time In", value=datetime.strptime("09:00", "%H:%M").time())
+        with col_out:
+            time_out = st.time_input("Time Out", value=datetime.strptime("17:00", "%H:%M").time())
+            
+        submit_btn = st.form_submit_button("Save Timecard Entry")
+        
+        if submit_btn:
+            if not emp_name.strip():
+                st.error("Please enter an employee name.")
+            else:
+                datetime_in = datetime.combine(entry_date, time_in)
+                datetime_out = datetime.combine(entry_date, time_out)
+                
+                if datetime_out <= datetime_in:
+                    datetime_out += timedelta(days=1)
+                    
+                duration = (datetime_out - datetime_in).total_seconds() / 3600.0
+                
+                c.execute('''
+                    INSERT INTO timecards (employee, hourly_rate, work_date, time_in, time_out, hours_worked)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (emp_name, hourly_rate, entry_date.strftime("%Y-%m-%d"), time_in.strftime("%H:%M"), time_out.strftime("%H:%M"), round(duration, 2)))
+                conn.commit()
+                st.success(f"Logged {duration:.2f} hrs for {emp_name} on {entry_date}!")
 
-if calc_hours > overtime_threshold:
-    reg_hours = overtime_threshold
-    ot_hours = calc_hours - overtime_threshold
-else:
-    reg_hours = calc_hours
-    ot_hours = 0.0
+# ---------------------------------------------------------
+# TAB 2: Payroll Summary
+# ---------------------------------------------------------
+with tab2:
+    st.subheader("Salary & Hours Summary")
+    
+    df = pd.read_sql_query("SELECT * FROM timecards", conn)
+    
+    if not df.empty:
+        df["Total Salary ($)"] = df["hours_worked"] * df["hourly_rate"]
+        
+        summary_df = df.groupby("employee").agg(
+            Total_Hours=("hours_worked", "sum"),
+            Hourly_Rate=("hourly_rate", "first"),
+            Total_Salary=("Total Salary ($)", "sum")
+        ).reset_index()
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
+        with c2:
+            st.metric("Total Payroll", f"${summary_df['Total_Salary'].sum():,.2f}")
+        
+        st.markdown("---")
+        st.dataframe(
+            summary_df,
+            column_config={
+                "employee": "Employee",
+                "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
+                "Hourly_Rate": st.column_config.NumberColumn("Rate ($)", format="$%.2f"),
+                "Total_Salary": st.column_config.NumberColumn("Total Pay ($)", format="$%.2f")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No logs found. Add shift entries in the first tab!")
 
-total_est = (reg_hours * calc_rate) + (ot_hours * calc_rate * overtime_multiplier)
-
-st.success(f"**Calculated Salary:** ${total_est:,.2f}")
+# ---------------------------------------------------------
+# TAB 3: History & Manual Edits
+# ---------------------------------------------------------
+with tab3:
+    st.subheader("3-Month Shift Log & Manual Edits")
+    
+    df_raw = pd.read_sql_query("SELECT * FROM timecards ORDER BY work_date DESC", conn)
+    
+    if not df_raw.empty:
+        edited_df = st.data_editor(
+            df_raw,
+            num_rows="dynamic",
+            key="timecard_editor",
+            use_container_width=True
+        )
+        
+        if st.button("Save Changes to Database"):
+            c.execute("DELETE FROM timecards")
+            for _, row in edited_df.iterrows():
+                c.execute('''
+                    INSERT INTO timecards (id, employee, hourly_rate, work_date, time_in, time_out, hours_worked)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (row['id'], row['employee'], row['hourly_rate'], row['work_date'], row['time_in'], row['time_out'], row['hours_worked']))
+            conn.commit()
+            st.success("Database updated successfully!")
+            st.rerun()
+    else:
+        st.info("No records to display.")
