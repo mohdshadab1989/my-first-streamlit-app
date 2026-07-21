@@ -140,7 +140,7 @@ def parse_time_str(time_val):
     return None
 
 def calculate_row_hours(row):
-    """Dynamically calculates total daily working hours for a single row."""
+    """Dynamically calculates total daily working hours (as decimal) for a row."""
     total = 0.0
     
     # Morning Shift calculation
@@ -162,6 +162,17 @@ def calculate_row_hours(row):
         total += diff
 
     return round(total, 2)
+
+def format_hours_to_hhmm(decimal_hours):
+    """Converts decimal hours (e.g. 1.50, 1.75) into HH:MM format (e.g. 1:30, 1:45)."""
+    try:
+        val = float(decimal_hours)
+        total_minutes = int(round(val * 60))
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        return f"{hours}:{minutes:02d}"
+    except (ValueError, TypeError):
+        return "0:00"
 
 # --- Tab Navigation ---
 tab1, tab2, tab3 = st.tabs(["➕ Log Time", "📊 Payroll Calculation", "📜 Edit Logs & History"])
@@ -274,7 +285,7 @@ with tab1:
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (emp_name, entry_date.strftime("%Y-%m-%d"), m_in_str, m_out_str, e_in_str, e_out_str, tot_hrs))
                 conn.commit()
-                st.success(f"Logged entry for {emp_name} on {entry_date} ({tot_hrs:.2f} hrs worked).")
+                st.success(f"Logged entry for {emp_name} on {entry_date} ({format_hours_to_hhmm(tot_hrs)} hrs worked).")
 
     st.markdown("---")
     
@@ -348,6 +359,7 @@ with tab2:
                 Total_Hours=("total_hours", "sum")
             ).reset_index()
             
+            summary_df["Formatted_Hours"] = summary_df["Total_Hours"].apply(format_hours_to_hhmm)
             summary_df["Hourly_Rate"] = hourly_rate_input
             summary_df["Total_Pay"] = summary_df["Total_Hours"] * hourly_rate_input
             
@@ -356,7 +368,7 @@ with tab2:
             
             m1, m2 = st.columns(2)
             with m1:
-                st.metric("Total Hours Logged", f"{summary_df['Total_Hours'].sum():.2f} hrs")
+                st.metric("Total Hours Logged", f"{format_hours_to_hhmm(summary_df['Total_Hours'].sum())} hrs")
             with m2:
                 st.metric("Total Payroll Amount", f"SAR {summary_df['Total_Pay'].sum():,.2f}")
                 
@@ -365,10 +377,11 @@ with tab2:
                 summary_df,
                 column_config={
                     "employee": "Employee Name",
-                    "Total_Hours": st.column_config.NumberColumn("Total Hours (from History)", format="%.2f hrs"),
+                    "Formatted_Hours": "Total Hours (HH:MM)",
                     "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
                     "Total_Pay": st.column_config.NumberColumn("Total Salary (SAR)", format="SAR %.2f")
                 },
+                column_order=["employee", "Formatted_Hours", "Hourly_Rate", "Total_Pay"],
                 use_container_width=True,
                 hide_index=True
             )
@@ -403,15 +416,17 @@ with tab3:
         # 1. MAKE ID CONTINUOUS & SEQUENTIAL (1, 2, 3...)
         df_display["id"] = range(1, len(df_display) + 1)
         
-        # 2. DYNAMICALLY CALCULATE AND EXTEND "TOTAL HOURS WORKED" COLUMN FOR EVERY ROW
-        df_display["total_hours"] = df_display.apply(calculate_row_hours, axis=1)
+        # 2. DYNAMICALLY CALCULATE HOURS (NUMERIC) AND FORMAT AS HH:MM FOR DISPLAY
+        numeric_hours = df_display.apply(calculate_row_hours, axis=1)
+        df_display["total_hours_num"] = numeric_hours
+        df_display["total_hours"] = numeric_hours.apply(format_hours_to_hhmm)
         
         # Reorder columns explicitly including the total_hours column
         cols = ["id", "employee", "work_date", "m_in", "m_out", "e_in", "e_out", "total_hours"]
         df_display = df_display[cols]
 
         # Calculate Grand Total across all rows
-        total_hours_sum = df_display["total_hours"].sum()
+        total_hours_sum = numeric_hours.sum()
 
         # Display Editable Data Table
         edited_df = st.data_editor(
@@ -424,7 +439,7 @@ with tab3:
                 "m_out": "M. Out",
                 "e_in": "E. In",
                 "e_out": "E. Out",
-                "total_hours": st.column_config.NumberColumn("Total Hours Worked", format="%.2f hrs", disabled=True)
+                "total_hours": st.column_config.TextColumn("Total Hours Worked", disabled=True)
             },
             num_rows="dynamic",
             key="timecard_editor",
@@ -434,13 +449,13 @@ with tab3:
         
         st.write("")
         
-        # 3. SAVE BUTTON AND ACCURATE TOTAL HOURS METRIC AT BOTTOM RIGHT
+        # 3. SAVE BUTTON AND ACCURATE TOTAL HOURS METRIC (HH:MM FORMAT) AT BOTTOM RIGHT
         col_save, col_total = st.columns([3, 1])
         
         with col_save:
             if st.button("Save Changes to Database", type="primary"):
-                # Recalculate hours dynamically for edited entries before saving
-                edited_df["total_hours"] = edited_df.apply(calculate_row_hours, axis=1)
+                # Recalculate decimal hours row-by-row before inserting into database
+                edited_df["total_hours_num"] = edited_df.apply(calculate_row_hours, axis=1)
                 
                 if selected_emp == "All Employees":
                     c.execute("DELETE FROM timecards_v3")
@@ -448,21 +463,21 @@ with tab3:
                         c.execute('''
                             INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ''', (row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+                        ''', (row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours_num']))
                 else:
                     c.execute("DELETE FROM timecards_v3 WHERE employee = ?", (selected_emp,))
                     for _, row in edited_df.iterrows():
                         c.execute('''
                             INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
                             VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ''', (row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+                        ''', (row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours_num']))
                 
                 conn.commit()
                 st.success("Database updated successfully!")
                 st.rerun()
 
         with col_total:
-            st.metric(label="TOTAL HOURS", value=f"{total_hours_sum:.2f} hrs")
+            st.metric(label="TOTAL HOURS", value=f"{format_hours_to_hhmm(total_hours_sum)} hrs")
 
     else:
         st.info(f"No records found for {selected_emp}.")
