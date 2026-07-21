@@ -10,6 +10,9 @@ st.set_page_config(
     layout="centered"
 )
 
+# --- Admin Password Configuration ---
+ADMIN_PASSWORD = "8443"  # <--- Updated Password!
+
 # --- Header Section with Logo ---
 st.title("📷 AL FANATEER STUDIO")
 st.caption("SINCE 1995 • 'COME ONCE STAY FOREVER'")
@@ -21,6 +24,35 @@ except Exception:
     pass
 
 st.markdown("---")
+
+# --- Screen Lock Check ---
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    st.subheader("🔒 App Locked")
+    st.info("Please enter the password to access the app.")
+    
+    with st.form("login_form"):
+        pwd_input = st.text_input("Enter Password", type="password")
+        login_btn = st.form_submit_button("Unlock App")
+        
+        if login_btn:
+            if pwd_input == ADMIN_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.success("Access Granted!")
+                st.rerun()
+            else:
+                st.error("Incorrect password!")
+                
+    st.stop()  # Stops the rest of the script from loading until unlocked
+
+# --- Logout Button (Top Right / Header) ---
+col_head, col_logout = st.columns([3, 1])
+with col_logout:
+    if st.button("🔒 Lock App"):
+        st.session_state["authenticated"] = False
+        st.rerun()
 
 # --- Database Setup (SQLite) ---
 conn = sqlite3.connect("timesheets.db", check_same_thread=False)
@@ -77,27 +109,12 @@ def calc_shift_hours(t_in, t_out, active):
     return (dt_out - dt_in).total_seconds() / 3600.0
 
 # --- Tab Navigation ---
-tab1, tab2, tab3 = st.tabs(["➕ Log / Edit Time", "📊 Hours & Salary", "📜 3-Month Logs"])
+tab1, tab2, tab3 = st.tabs(["➕ Log / Edit Time", "📊 Payroll Summary", "📜 Edit Logs & History"])
 
 # ---------------------------------------------------------
-# TAB 1: Log or Edit Entry (Dual Shift & Dropdown)
+# TAB 1: Log Entry & Add Employee
 # ---------------------------------------------------------
 with tab1:
-    # --- Add New Employee Section ---
-    with st.expander("👤 Manage / Add New Employee"):
-        new_emp_name = st.text_input("New Employee Name", placeholder="e.g. John")
-        if st.button("Save New Employee"):
-            if new_emp_name.strip():
-                try:
-                    c.execute("INSERT INTO employees (name) VALUES (?)", (new_emp_name.strip(),))
-                    conn.commit()
-                    st.success(f"Added {new_emp_name.strip()} to employee list!")
-                    st.rerun()
-                except sqlite3.IntegrityError:
-                    st.warning("This employee already exists!")
-            else:
-                st.error("Please enter a valid name.")
-
     st.subheader("Clock In / Out Entry")
     
     current_employees = get_employee_list()
@@ -152,6 +169,23 @@ with tab1:
                 ''', (emp_name, hourly_rate, entry_date.strftime("%Y-%m-%d"), m_in_str, m_out_str, e_in_str, e_out_str, tot_hrs))
                 conn.commit()
                 st.success(f"Logged {tot_hrs:.2f} total hours for {emp_name} on {entry_date}!")
+
+    st.markdown("---")
+    
+    # --- Add New Employee Section ---
+    with st.expander("👤 Manage / Add New Employee"):
+        new_emp_name = st.text_input("New Employee Name", placeholder="e.g. John")
+        if st.button("Save New Employee"):
+            if not new_emp_name.strip():
+                st.error("Please enter a valid name.")
+            else:
+                try:
+                    c.execute("INSERT INTO employees (name) VALUES (?)", (new_emp_name.strip(),))
+                    conn.commit()
+                    st.success(f"Added {new_emp_name.strip()} to employee list!")
+                    st.rerun()
+                except sqlite3.IntegrityError:
+                    st.warning("This employee already exists!")
 
 # ---------------------------------------------------------
 # TAB 2: Payroll Summary
