@@ -3,15 +3,16 @@ import pandas as pd
 import sqlite3
 from datetime import datetime, date, timedelta
 
+# --- Configuration Constants ---
+HOURLY_RATE = 10.0  # Fixed rate per hour (SAR)
+ADMIN_PASSWORD = "8443"
+
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Al Fanateer Studio - Timecard & Payroll", 
     page_icon="📷",
     layout="centered"
 )
-
-# --- Admin Password Configuration ---
-ADMIN_PASSWORD = "8443"
 
 # --- Header Section with Logo ---
 st.title("📷 AL FANATEER STUDIO")
@@ -238,6 +239,7 @@ with tab1:
 # ---------------------------------------------------------
 with tab2:
     st.subheader("💵 Payroll Calculation")
+    st.caption("Standard Rate: **10 SAR / hour**")
     
     df = pd.read_sql_query("SELECT * FROM timecards_v3", conn)
     
@@ -271,40 +273,25 @@ with tab2:
                 Total_Hours=("total_hours", "sum")
             ).reset_index()
             
-            summary_df["Hourly_Rate"] = 25.0  
+            summary_df["Hourly_Rate"] = HOURLY_RATE
+            summary_df["Total_Pay"] = summary_df["Total_Hours"] * HOURLY_RATE
             
             st.markdown("---")
-            st.markdown("### ✍️ Enter Hourly Rate to Calculate Pay")
             st.caption(f"Showing total hours from **{start_date}** to **{end_date}**")
             
-            edited_rates = st.data_editor(
-                summary_df,
-                column_config={
-                    "employee": st.column_config.Column("Employee", disabled=True),
-                    "Total_Hours": st.column_config.NumberColumn("Total Hours Worked", format="%.2f hrs", disabled=True),
-                    "Hourly_Rate": st.column_config.NumberColumn("Hourly Rate (SAR)", format="SAR %.2f", min_value=0.0, step=0.50)
-                },
-                use_container_width=True,
-                hide_index=True,
-                key="calc_rate_editor"
-            )
-            
-            edited_rates["Total_Pay"] = edited_rates["Total_Hours"] * edited_rates["Hourly_Rate"]
-            
-            st.markdown("---")
             m1, m2 = st.columns(2)
             with m1:
-                st.metric("Total Hours (All Staff)", f"{edited_rates['Total_Hours'].sum():.2f} hrs")
+                st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
             with m2:
-                st.metric("Total Amount to Pay", f"SAR {edited_rates['Total_Pay'].sum():,.2f}")
+                st.metric("Total Amount to Pay", f"SAR {summary_df['Total_Pay'].sum():,.2f}")
                 
             st.markdown("### 📋 Final Payout Breakdown")
             st.dataframe(
-                edited_rates,
+                summary_df,
                 column_config={
                     "employee": "Employee Name",
                     "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
-                    "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
+                    "Hourly_Rate": st.column_config.NumberColumn("Fixed Rate", format="SAR %.2f"),
                     "Total_Pay": st.column_config.NumberColumn("Total Salary (SAR)", format="SAR %.2f")
                 },
                 use_container_width=True,
