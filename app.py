@@ -103,7 +103,7 @@ summary_df = df.groupby("employee").agg(
     Total_Salary=("Total Salary (SAR)", "sum")
 ).reset_index()
         
-        c1, c2 = st.columns(2)
+c1, c2 = st.columns(2)
         with c1:
             st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
         with c2:
