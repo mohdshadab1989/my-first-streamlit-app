@@ -10,85 +10,17 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- Custom Styling (Gold & Dark Theme) ---
-st.markdown("""
-    <style>
-    /* Global Styling */
-    .stApp {
-        background-color: #0E1117;
-        color: #F0F2F6;
-    }
-    
-    /* Header Container */
-    .header-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding-bottom: 15px;
-        border-bottom: 2px solid #D4AF37;
-        margin-bottom: 20px;
-    }
-    .header-title {
-        color: #D4AF37;
-        font-family: 'Georgia', serif;
-        font-weight: bold;
-        font-size: 26px;
-        margin-top: 10px;
-        margin-bottom: 0px;
-        letter-spacing: 1.5px;
-    }
-    .header-tagline {
-        color: #C0C0C0;
-        font-size: 13px;
-        font-style: italic;
-        margin-top: 2px;
-    }
-    
-    /* Metric Cards Styling */
-    div[data-testid="stMetric"] {
-        background-color: #1A1D24;
-        border: 1px solid #D4AF37;
-        border-radius: 10px;
-        padding: 12px;
-    }
-    div[data-testid="stMetricLabel"] > label {
-        color: #D4AF37 !important;
-        font-weight: 600;
-    }
-    
-    /* Custom Button Styling */
-    .stButton > button {
-        background-color: #D4AF37;
-        color: #0E1117;
-        font-weight: bold;
-        border-radius: 8px;
-        border: none;
-        width: 100%;
-    }
-    .stButton > button:hover {
-        background-color: #FFD700;
-        color: #000000;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 # --- Header Section with Logo ---
-st.markdown("""
-    <div class="header-container">
-        <h1 class="header-title">AL FANATEER STUDIO</h1>
-        <p class="header-tagline">SINCE 1995 • "COME ONCE STAY FOREVER"</p>
-    </div>
-""", unsafe_allow_shortcut=True)
+st.title("📷 AL FANATEER STUDIO")
+st.caption("SINCE 1995 • 'COME ONCE STAY FOREVER'")
 
-# Display the uploaded PNG logo centered
+# Display logo if uploaded
 try:
     st.image("LOGO.png", width=140)
 except Exception:
     pass
 
-st.caption("⏱️ Employee Timecard & Payroll Management")
+st.markdown("---")
 
 # --- Database Setup (SQLite) ---
 conn = sqlite3.connect("timesheets.db", check_same_thread=False)
