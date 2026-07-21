@@ -110,19 +110,19 @@ with c2:
     st.metric("Total Payroll", f"${summary_df['Total_Salary'].sum():,.2f}")
         
 st.markdown("---")
-    st.dataframe(
-        summary_df,
-            column_config={
-                "employee": "Employee",
-                "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
-                "Hourly_Rate": st.column_config.NumberColumn("Rate ($)", format="$%.2f"),
-                "Total_Salary": st.column_config.NumberColumn("Total Pay ($)", format="$%.2f")
-            },
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("No logs found. Add shift entries in the first tab!")
+st.dataframe(
+    summary_df,
+    column_config={
+        "employee": "Employee",
+        "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
+        "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
+        "Total_Salary": st.column_config.NumberColumn("Total Pay (SAR)", format="SAR %.2f")
+    },
+    use_container_width=True,
+    hide_index=True
+)
+else:
+    st.info("No logs found. Add shift entries in the first tab!")
 
 # ---------------------------------------------------------
 # TAB 3: History & Manual Edits
