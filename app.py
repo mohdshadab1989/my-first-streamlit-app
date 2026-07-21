@@ -121,86 +121,101 @@ with tab1:
         
         st.markdown("---")
         
-        # Day Off & Absent Checkbox Options
+        # Quick Full-Day Overrides
+        st.markdown("**⚡ Full Day Overrides (Optional)**")
         status_col1, status_col2 = st.columns(2)
         with status_col1:
-            is_day_off = st.checkbox("🌴 Mark Entire Day as OFF")
+            is_full_day_off = st.checkbox("🌴 Entire Day OFF")
         with status_col2:
-            is_absent = st.checkbox("❌ Mark as Absent")
-        
-        # Disable input fields if either Day Off or Absent is selected
-        disable_shifts = is_day_off or is_absent
+            is_full_day_absent = st.checkbox("❌ Entire Day ABSENT")
         
         st.markdown("---")
         
         # Morning Shift Section
         st.markdown("**🌅 Morning Shift**")
-        m_worked = st.checkbox("Worked Morning Shift?", value=True, disabled=disable_shifts)
+        m_status = st.selectbox(
+            "Morning Shift Status",
+            ["Worked", "Shift Off", "Absent"],
+            disabled=(is_full_day_off or is_full_day_absent)
+        )
         
         col_m_in, col_m_out = st.columns(2)
         with col_m_in:
-            m_in = st.time_input("Morning In", value=datetime.strptime("09:00", "%H:%M").time(), disabled=(disable_shifts or not m_worked))
+            m_in = st.time_input("Morning In", value=datetime.strptime("09:00", "%H:%M").time(), disabled=(is_full_day_off or is_full_day_absent or m_status != "Worked"))
         with col_m_out:
-            m_out = st.time_input("Morning Out", value=datetime.strptime("13:00", "%H:%M").time(), disabled=(disable_shifts or not m_worked))
+            m_out = st.time_input("Morning Out", value=datetime.strptime("13:00", "%H:%M").time(), disabled=(is_full_day_off or is_full_day_absent or m_status != "Worked"))
             
         st.markdown("---")
         
         # Evening Shift Section
         st.markdown("**🌙 Evening Shift**")
-        e_worked = st.checkbox("Worked Evening Shift?", value=True, disabled=disable_shifts)
+        e_status = st.selectbox(
+            "Evening Shift Status",
+            ["Worked", "Shift Off", "Absent"],
+            disabled=(is_full_day_off or is_full_day_absent)
+        )
         
         col_e_in, col_e_out = st.columns(2)
         with col_e_in:
-            e_in = st.time_input("Evening In", value=datetime.strptime("16:00", "%H:%M").time(), disabled=(disable_shifts or not e_worked))
+            e_in = st.time_input("Evening In", value=datetime.strptime("16:00", "%H:%M").time(), disabled=(is_full_day_off or is_full_day_absent or e_status != "Worked"))
         with col_e_out:
-            e_out = st.time_input("Evening Out", value=datetime.strptime("22:00", "%H:%M").time(), disabled=(disable_shifts or not e_worked))
+            e_out = st.time_input("Evening Out", value=datetime.strptime("22:00", "%H:%M").time(), disabled=(is_full_day_off or is_full_day_absent or e_status != "Worked"))
             
         st.markdown("---")
         submit_btn = st.form_submit_button("Save Timecard Entry")
         
         if submit_btn:
-            if is_absent:
-                # Log as ABSENT
+            if is_full_day_absent:
                 c.execute('''
                     INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (emp_name, entry_date.strftime("%Y-%m-%d"), "ABSENT", "ABSENT", "ABSENT", "ABSENT", 0.0))
                 conn.commit()
-                st.error(f"Logged ABSENT for {emp_name} on {entry_date}.")
-            elif is_day_off:
-                # Mark entire day as OFF
+                st.error(f"Logged Full Day ABSENT for {emp_name} on {entry_date}.")
+            elif is_full_day_off:
                 c.execute('''
                     INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (emp_name, entry_date.strftime("%Y-%m-%d"), "OFF", "OFF", "OFF", "OFF", 0.0))
                 conn.commit()
-                st.success(f"Logged Full Day Off for {emp_name} on {entry_date}!")
+                st.success(f"Logged Full Day OFF for {emp_name} on {entry_date}!")
             else:
-                if not m_worked and not e_worked:
-                    # Both shifts unchecked = Day Off
-                    c.execute('''
-                        INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (emp_name, entry_date.strftime("%Y-%m-%d"), "OFF", "OFF", "OFF", "OFF", 0.0))
-                    conn.commit()
-                    st.success(f"Both shifts off - Logged Day Off for {emp_name} on {entry_date}!")
-                else:
-                    # Calculate active hours per shift
-                    m_hrs = calc_shift_hours(m_in, m_out, m_worked)
-                    e_hrs = calc_shift_hours(e_in, e_out, e_worked)
-                    tot_hrs = round(m_hrs + e_hrs, 2)
-                    
-                    m_in_str = m_in.strftime("%H:%M") if m_worked else "OFF"
-                    m_out_str = m_out.strftime("%H:%M") if m_worked else "OFF"
-                    e_in_str = e_in.strftime("%H:%M") if e_worked else "OFF"
-                    e_out_str = e_out.strftime("%H:%M") if e_worked else "OFF"
-                    
-                    c.execute('''
-                        INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (emp_name, entry_date.strftime("%Y-%m-%d"), m_in_str, m_out_str, e_in_str, e_out_str, tot_hrs))
-                    conn.commit()
-                    st.success(f"Logged {tot_hrs:.2f} hours for {emp_name} on {entry_date}!")
+                # Process Morning Shift values
+                if m_status == "Worked":
+                    m_hrs = calc_shift_hours(m_in, m_out, True)
+                    m_in_str = m_in.strftime("%H:%M")
+                    m_out_str = m_out.strftime("%H:%M")
+                elif m_status == "Shift Off":
+                    m_hrs = 0.0
+                    m_in_str = "OFF"
+                    m_out_str = "OFF"
+                else:  # Absent
+                    m_hrs = 0.0
+                    m_in_str = "ABSENT"
+                    m_out_str = "ABSENT"
+
+                # Process Evening Shift values
+                if e_status == "Worked":
+                    e_hrs = calc_shift_hours(e_in, e_out, True)
+                    e_in_str = e_in.strftime("%H:%M")
+                    e_out_str = e_out.strftime("%H:%M")
+                elif e_status == "Shift Off":
+                    e_hrs = 0.0
+                    e_in_str = "OFF"
+                    e_out_str = "OFF"
+                else:  # Absent
+                    e_hrs = 0.0
+                    e_in_str = "ABSENT"
+                    e_out_str = "ABSENT"
+
+                tot_hrs = round(m_hrs + e_hrs, 2)
+
+                c.execute('''
+                    INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (emp_name, entry_date.strftime("%Y-%m-%d"), m_in_str, m_out_str, e_in_str, e_out_str, tot_hrs))
+                conn.commit()
+                st.success(f"Logged entry for {emp_name} on {entry_date} ({tot_hrs:.2f} hrs worked).")
 
     st.markdown("---")
     
@@ -219,7 +234,7 @@ with tab1:
                     st.warning("This employee already exists!")
 
 # ---------------------------------------------------------
-# TAB 2: Payroll Calculation (Filter Period & Put Rate)
+# TAB 2: Payroll Calculation
 # ---------------------------------------------------------
 with tab2:
     st.subheader("💵 Payroll Calculation")
@@ -229,7 +244,6 @@ with tab2:
     if not df.empty:
         df["work_date"] = pd.to_datetime(df["work_date"]).dt.date
         
-        # Period Filter Selection
         period_option = st.radio(
             "Select Calculation Period:",
             ["Last 30 Days (1 Month)", "Last 90 Days (3 Months)", "Custom Date Range"],
@@ -250,7 +264,6 @@ with tab2:
             with c_col2:
                 end_date = st.date_input("End Date", value=today)
 
-        # Filter dataframe by selected period
         filtered_df = df[(df["work_date"] >= start_date) & (df["work_date"] <= end_date)]
         
         if not filtered_df.empty:
@@ -276,7 +289,6 @@ with tab2:
                 key="calc_rate_editor"
             )
             
-            # Instant calculation
             edited_rates["Total_Pay"] = edited_rates["Total_Hours"] * edited_rates["Hourly_Rate"]
             
             st.markdown("---")
