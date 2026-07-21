@@ -72,7 +72,7 @@ st.markdown("""
         color: #000000;
     }
     </style>
-""", unsafe_allow_shortcut=True)
+""", unsafe_allow_html=True)
 
 # --- Header Section with Logo ---
 st.markdown("""
