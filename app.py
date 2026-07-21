@@ -127,33 +127,41 @@ def calc_shift_hours(t_in, t_out, active):
         dt_out += timedelta(days=1)
     return (dt_out - dt_in).total_seconds() / 3600.0
 
+def parse_time_str(time_val):
+    """Attempts to parse string time inputs into datetime objects."""
+    s = str(time_val).strip().upper()
+    if s in ['OFF', 'ABSENT', 'NONE', '', 'NAN']:
+        return None
+    for fmt in ['%H:%M', '%I:%M %p', '%H:%M:%S', '%I:%M:%S %p']:
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            pass
+    return None
+
 def calculate_row_hours(row):
-    """Dynamically calculates working hours for a row in history view."""
+    """Dynamically calculates total daily working hours for a single row."""
     total = 0.0
     
     # Morning Shift calculation
-    m_in_val = str(row.get('m_in', '')).strip()
-    m_out_val = str(row.get('m_out', '')).strip()
-    if m_in_val not in ['OFF', 'ABSENT', 'None', ''] and m_out_val not in ['OFF', 'ABSENT', 'None', '']:
-        try:
-            t_in = pd.to_datetime(m_in_val, format='%H:%M')
-            t_out = pd.to_datetime(m_out_val, format='%H:%M')
-            total += (t_out - t_in).total_seconds() / 3600.0
-        except Exception:
-            pass
+    m_in_dt = parse_time_str(row.get('m_in'))
+    m_out_dt = parse_time_str(row.get('m_out'))
+    if m_in_dt and m_out_dt:
+        diff = (m_out_dt - m_in_dt).total_seconds() / 3600.0
+        if diff < 0:
+            diff += 24.0  # Handle midnight rollover
+        total += diff
 
     # Evening Shift calculation
-    e_in_val = str(row.get('e_in', '')).strip()
-    e_out_val = str(row.get('e_out', '')).strip()
-    if e_in_val not in ['OFF', 'ABSENT', 'None', ''] and e_out_val not in ['OFF', 'ABSENT', 'None', '']:
-        try:
-            t_in = pd.to_datetime(e_in_val, format='%H:%M')
-            t_out = pd.to_datetime(e_out_val, format='%H:%M')
-            total += (t_out - t_in).total_seconds() / 3600.0
-        except Exception:
-            pass
+    e_in_dt = parse_time_str(row.get('e_in'))
+    e_out_dt = parse_time_str(row.get('e_out'))
+    if e_in_dt and e_out_dt:
+        diff = (e_out_dt - e_in_dt).total_seconds() / 3600.0
+        if diff < 0:
+            diff += 24.0  # Handle midnight rollover
+        total += diff
 
-    return total
+    return round(total, 2)
 
 # --- Tab Navigation ---
 tab1, tab2, tab3 = st.tabs(["➕ Log Time", "📊 Payroll Calculation", "📜 Edit Logs & History"])
@@ -379,7 +387,7 @@ with tab3:
     all_employees = ["All Employees"] + get_employee_list()
     selected_emp = st.selectbox("🔍 Filter by Employee Name", all_employees, key="history_emp_select")
     
-    # Fetch Data sorted by date ASCENDING (1st July, 2nd July, 3rd July...)
+    # Fetch Data sorted by date ASCENDING
     if selected_emp == "All Employees":
         df_raw = pd.read_sql_query("SELECT * FROM timecards_v3 ORDER BY work_date ASC", conn)
     else:
@@ -390,18 +398,20 @@ with tab3:
         )
     
     if not df_raw.empty:
-        df_display = df_raw.drop(columns=["total_hours"], errors="ignore").reset_index(drop=True)
+        df_display = df_raw.copy()
         
         # 1. MAKE ID CONTINUOUS & SEQUENTIAL (1, 2, 3...)
         df_display["id"] = range(1, len(df_display) + 1)
         
-        # Reorder columns so ID comes first
-        cols = ["id", "employee", "work_date", "m_in", "m_out", "e_in", "e_out"]
+        # 2. DYNAMICALLY CALCULATE AND EXTEND "TOTAL HOURS WORKED" COLUMN FOR EVERY ROW
+        df_display["total_hours"] = df_display.apply(calculate_row_hours, axis=1)
+        
+        # Reorder columns explicitly including the total_hours column
+        cols = ["id", "employee", "work_date", "m_in", "m_out", "e_in", "e_out", "total_hours"]
         df_display = df_display[cols]
 
-        # 2. DYNAMICALLY CALCULATE TOTAL HOURS
-        calculated_hours = df_display.apply(calculate_row_hours, axis=1)
-        total_hours_sum = calculated_hours.sum()
+        # Calculate Grand Total across all rows
+        total_hours_sum = df_display["total_hours"].sum()
 
         # Display Editable Data Table
         edited_df = st.data_editor(
@@ -413,7 +423,8 @@ with tab3:
                 "m_in": "M. In",
                 "m_out": "M. Out",
                 "e_in": "E. In",
-                "e_out": "E. Out"
+                "e_out": "E. Out",
+                "total_hours": st.column_config.NumberColumn("Total Hours Worked", format="%.2f hrs", disabled=True)
             },
             num_rows="dynamic",
             key="timecard_editor",
@@ -423,12 +434,12 @@ with tab3:
         
         st.write("")
         
-        # 3. SAVE BUTTON AND TOTAL HOURS METRIC AT BOTTOM RIGHT
+        # 3. SAVE BUTTON AND ACCURATE TOTAL HOURS METRIC AT BOTTOM RIGHT
         col_save, col_total = st.columns([3, 1])
         
         with col_save:
             if st.button("Save Changes to Database", type="primary"):
-                # Calculate final hours row-by-row before inserting into database
+                # Recalculate hours dynamically for edited entries before saving
                 edited_df["total_hours"] = edited_df.apply(calculate_row_hours, axis=1)
                 
                 if selected_emp == "All Employees":
