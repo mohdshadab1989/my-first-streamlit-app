@@ -104,10 +104,10 @@ summary_df = df.groupby("employee").agg(
 ).reset_index()
         
 c1, c2 = st.columns(2)
-        with c1:
-            st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
-        with c2:
-            st.metric("Total Payroll", f"${summary_df['Total_Salary'].sum():,.2f}")
+with c1:
+st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
+with c2:
+st.metric("Total Payroll", f"${summary_df['Total_Salary'].sum():,.2f}")
         
         st.markdown("---")
         st.dataframe(
