@@ -121,55 +121,64 @@ with tab1:
         
         st.markdown("---")
         
-        # Day Off Checkbox Option
-        is_day_off = st.checkbox("🌴 Mark as Day Off (Weekly Off)")
+        # Full Day Off Checkbox Option
+        is_day_off = st.checkbox("🌴 Mark Entire Day as OFF (Weekly Off)")
         
         st.markdown("---")
         
-        # Morning Shift
+        # Morning Shift Section
         st.markdown("**🌅 Morning Shift**")
-        has_morning = st.checkbox("Worked Morning Shift?", value=True, disabled=is_day_off)
+        m_worked = st.checkbox("Worked Morning Shift?", value=True, disabled=is_day_off)
+        
         col_m_in, col_m_out = st.columns(2)
         with col_m_in:
-            m_in = st.time_input("Morning In", value=datetime.strptime("09:00", "%H:%M").time(), disabled=is_day_off)
+            m_in = st.time_input("Morning In", value=datetime.strptime("09:00", "%H:%M").time(), disabled=(is_day_off or not m_worked))
         with col_m_out:
-            m_out = st.time_input("Morning Out", value=datetime.strptime("13:00", "%H:%M").time(), disabled=is_day_off)
+            m_out = st.time_input("Morning Out", value=datetime.strptime("13:00", "%H:%M").time(), disabled=(is_day_off or not m_worked))
             
         st.markdown("---")
         
-        # Evening Shift
+        # Evening Shift Section
         st.markdown("**🌙 Evening Shift**")
-        has_evening = st.checkbox("Worked Evening Shift?", value=True, disabled=is_day_off)
+        e_worked = st.checkbox("Worked Evening Shift?", value=True, disabled=is_day_off)
+        
         col_e_in, col_e_out = st.columns(2)
         with col_e_in:
-            e_in = st.time_input("Evening In", value=datetime.strptime("16:00", "%H:%M").time(), disabled=is_day_off)
+            e_in = st.time_input("Evening In", value=datetime.strptime("16:00", "%H:%M").time(), disabled=(is_day_off or not e_worked))
         with col_e_out:
-            e_out = st.time_input("Evening Out", value=datetime.strptime("22:00", "%H:%M").time(), disabled=is_day_off)
+            e_out = st.time_input("Evening Out", value=datetime.strptime("22:00", "%H:%M").time(), disabled=(is_day_off or not e_worked))
             
         st.markdown("---")
         submit_btn = st.form_submit_button("Save Timecard Entry")
         
         if submit_btn:
             if is_day_off:
-                # Store "OFF" for shift times and 0 total hours
+                # Mark entire day as OFF
                 c.execute('''
                     INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (emp_name, entry_date.strftime("%Y-%m-%d"), "OFF", "OFF", "OFF", "OFF", 0.0))
                 conn.commit()
-                st.success(f"Logged Day Off for {emp_name} on {entry_date}!")
+                st.success(f"Logged Full Day Off for {emp_name} on {entry_date}!")
             else:
-                if not has_morning and not has_evening:
-                    st.error("Please select at least one active shift or check 'Mark as Day Off'.")
+                if not m_worked and not e_worked:
+                    # Both shifts unchecked = Day Off
+                    c.execute('''
+                        INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (emp_name, entry_date.strftime("%Y-%m-%d"), "OFF", "OFF", "OFF", "OFF", 0.0))
+                    conn.commit()
+                    st.success(f"Both shifts off - Logged Day Off for {emp_name} on {entry_date}!")
                 else:
-                    m_hrs = calc_shift_hours(m_in, m_out, has_morning)
-                    e_hrs = calc_shift_hours(e_in, e_out, has_evening)
+                    # Calculate active hours per shift
+                    m_hrs = calc_shift_hours(m_in, m_out, m_worked)
+                    e_hrs = calc_shift_hours(e_in, e_out, e_worked)
                     tot_hrs = round(m_hrs + e_hrs, 2)
                     
-                    m_in_str = m_in.strftime("%H:%M") if has_morning else "--"
-                    m_out_str = m_out.strftime("%H:%M") if has_morning else "--"
-                    e_in_str = e_in.strftime("%H:%M") if has_evening else "--"
-                    e_out_str = e_out.strftime("%H:%M") if has_evening else "--"
+                    m_in_str = m_in.strftime("%H:%M") if m_worked else "OFF"
+                    m_out_str = m_out.strftime("%H:%M") if m_worked else "OFF"
+                    e_in_str = e_in.strftime("%H:%M") if e_worked else "OFF"
+                    e_out_str = e_out.strftime("%H:%M") if e_worked else "OFF"
                     
                     c.execute('''
                         INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
