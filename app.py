@@ -1,41 +1,57 @@
 import pandas as pd
 import streamlit as st
+import os
 
 # ==========================================
 # 1. PAGE CONFIGURATION & CUSTOM STYLING
 # ==========================================
 st.set_page_config(
     page_title="Al Fanateer Studio - Timecard & Payroll",
-    page_icon="👑",
+    page_icon="📷",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for clean UI styling
+# Custom CSS for UI styling
 st.markdown("""
     <style>
     .main-header {
         display: flex;
         align-items: center;
-        gap: 15px;
-        margin-bottom: 20px;
+        gap: 20px;
+        margin-bottom: 10px;
+    }
+    .title-container {
+        display: flex;
+        flex-direction: column;
     }
     .logo-text {
-        font-size: 26px;
-        font-weight: 700;
+        font-size: 28px;
+        font-weight: 800;
         color: #1E293B;
+        margin: 0;
+    }
+    .tagline-text {
+        font-size: 14px;
+        font-weight: 500;
+        color: #64748B;
+        letter-spacing: 1px;
     }
     </style>
 """, unsafe_allow_html=True)
 
 
 # ==========================================
-# 2. SESSION STATE & DATABASE INITIALIZATION
+# 2. CONFIG & SESSION STATE INITIALIZATION
 # ==========================================
 APP_PASSWORD = "8443"
+HOURLY_RATE = 10.0  # 10 SAR/hr
 
 if "app_locked" not in st.session_state:
     st.session_state["app_locked"] = False
+
+if "employees" not in st.session_state:
+    st.session_state["employees"] = ["Remson", "Ali", "Ahmed"]
 
 if "logs" not in st.session_state:
     st.session_state["logs"] = pd.DataFrame([
@@ -50,7 +66,7 @@ if "logs" not in st.session_state:
 # 3. HELPER FUNCTIONS
 # ==========================================
 def calculate_row_hours(row):
-    """Calculates total hours worked in a single day across Morning and Evening shifts."""
+    """Calculates total working hours per day across Morning and Evening shifts."""
     total = 0.0
     
     # Process Morning Shift
@@ -75,15 +91,22 @@ def calculate_row_hours(row):
 
 
 # ==========================================
-# 4. TOP HEADER (LOGO, TITLE & LOCK BUTTON)
+# 4. TOP HEADER (LOGO IMAGE, TITLE & LOCK)
 # ==========================================
-col_header, col_lock = st.columns([5, 1])
+col_logo, col_title, col_lock = st.columns([1, 4, 1])
 
-with col_header:
+with col_logo:
+    # Display LOGO.jpg if present in the working directory
+    if os.path.exists("LOGO.jpg"):
+        st.image("LOGO.jpg", width=110)
+    else:
+        st.write("📷")
+
+with col_title:
     st.markdown("""
-        <div class="main-header">
-            <span style="font-size: 32px;">👑</span>
-            <span class="logo-text">Streamlit - Al Fanateer Studio - Timecard & Payroll</span>
+        <div class="title-container">
+            <span class="logo-text">AL FANATEER STUDIO</span>
+            <span class="tagline-text">SINCE 1995 • COME ONCE STAY FOREVER</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -97,7 +120,7 @@ st.divider()
 
 
 # ==========================================
-# 5. APP CONTENT / PASSCODE LOCK SCREEN
+# 5. PASSCODE LOCK & MAIN APP LOGIC
 # ==========================================
 if st.session_state["app_locked"]:
     st.subheader("🔒 App Locked")
@@ -105,7 +128,7 @@ if st.session_state["app_locked"]:
     lock_col1, lock_col2 = st.columns([1, 2])
     with lock_col1:
         pwd_input = st.text_input("Enter Passcode to Unlock:", type="password", key="pwd_input")
-        if st.button("Unlock", type="primary"):
+        if st.button("Unlock App", type="primary"):
             if pwd_input == APP_PASSWORD:
                 st.session_state["app_locked"] = False
                 st.success("App unlocked successfully!")
@@ -114,22 +137,58 @@ if st.session_state["app_locked"]:
                 st.error("Incorrect passcode! Please try again.")
 
 else:
-    # Main Navigation Tabs
-    tab1, tab2, tab3 = st.tabs(["➕ Log Time", "📊 Payroll Calculation", "📝 Edit Logs & History"])
+    # Navigation Tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["➕ Log Time", "📊 Payroll Calculation", "📝 Edit Logs & History", "⚙️ Manage Employees"])
 
     # --------------------------------------
     # TAB 1: LOG TIME
     # --------------------------------------
     with tab1:
-        st.subheader("Log Daily Shift")
-        st.info("Log new employee shifts, days off, or absences here.")
+        st.subheader("Log Shift / Attendance")
+        
+        emp = st.selectbox("Select Employee", st.session_state["employees"])
+        date_selected = st.date_input("Select Date")
+        
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            m_in = st.text_input("Morning Shift IN (HH:MM / OFF / ABSENT)", value="10:30")
+        with col_m2:
+            m_out = st.text_input("Morning Shift OUT (HH:MM / OFF / ABSENT)", value="13:00")
+
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            e_in = st.text_input("Evening Shift IN (HH:MM / OFF / ABSENT)", value="19:00")
+        with col_e2:
+            e_out = st.text_input("Evening Shift OUT (HH:MM / OFF / ABSENT)", value="22:00")
+
+        if st.button("Submit Shift Log", type="primary"):
+            new_entry = {
+                "Employee": emp,
+                "Date": str(date_selected),
+                "M. In": m_in,
+                "M. Out": m_out,
+                "E. In": e_in,
+                "E. Out": e_out
+            }
+            st.session_state["logs"] = pd.concat([pd.DataFrame([new_entry]), st.session_state["logs"]], ignore_index=True)
+            st.success(f"Log saved successfully for {emp}!")
 
     # --------------------------------------
     # TAB 2: PAYROLL CALCULATION
     # --------------------------------------
     with tab2:
-        st.subheader("Payroll Calculations")
-        st.info("Calculate overall monthly payroll based on recorded shift history (10 SAR/hr rate).")
+        st.subheader("Payroll Calculations (Rate: 10 SAR/hr)")
+        
+        df_logs = st.session_state["logs"].copy()
+        if not df_logs.empty:
+            df_logs["Hours"] = df_logs.apply(calculate_row_hours, axis=1)
+            
+            payroll_df = df_logs.groupby("Employee")["Hours"].sum().reset_index()
+            payroll_df["Total SAR"] = payroll_df["Hours"] * HOURLY_RATE
+            
+            st.dataframe(payroll_df, use_container_width=True)
+        else:
+            st.info("No data available for calculation.")
 
     # --------------------------------------
     # TAB 3: EDIT LOGS & HISTORY
@@ -148,10 +207,10 @@ else:
             df_filtered = df_logs[df_logs["Employee"] == selected_emp].copy()
 
             if not df_filtered.empty:
-                # 1. SEQUENTIAL SERIAL NUMBERS (1, 2, 3...)
+                # 1. SEQUENTIAL SERIAL NUMBERS (Start clean at 1, 2, 3...)
                 df_filtered = df_filtered.drop(columns=["ID"], errors="ignore")
                 df_display = df_filtered.reset_index(drop=True)
-                df_display.index = df_display.index + 1  # 1-based serial index
+                df_display.index = df_display.index + 1  # 1-based index
 
                 # 2. CALCULATE TOTAL HOURS
                 df_display["Hours_Worked"] = df_display.apply(calculate_row_hours, axis=1)
@@ -184,3 +243,17 @@ else:
                 st.info("No records found for the selected employee.")
         else:
             st.info("No shift logs found in the database.")
+
+    # --------------------------------------
+    # TAB 4: MANAGE EMPLOYEES
+    # --------------------------------------
+    with tab4:
+        st.subheader("Manage Employee Roster")
+        new_emp = st.text_input("Add New Employee Name:")
+        if st.button("Add Employee"):
+            if new_emp and new_emp not in st.session_state["employees"]:
+                st.session_state["employees"].append(new_emp)
+                st.success(f"Added {new_emp} to employee list.")
+                st.rerun()
+
+        st.write("Current Employees:", st.session_state["employees"])
