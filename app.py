@@ -55,7 +55,7 @@ with tab1:
     
     with st.form("time_entry_form", clear_on_submit=True):
         emp_name = st.text_input("Employee Name", placeholder="e.g. Alex Johnson")
-        hourly_rate = st.number_input("Hourly Rate ($)", min_value=0.0, value=25.0, step=0.50)
+        hourly_rate = st.number_input("Hourly Rate (SAR)", min_value=0.0, value=25.0, step=0.50)
         entry_date = st.date_input("Date", value=date.today())
         
         col_in, col_out = st.columns(2)
@@ -97,32 +97,32 @@ with tab2:
     if not df.empty:
         df["Total Salary (SAR)"] = df["hours_worked"] * df["hourly_rate"]
 
-summary_df = df.groupby("employee").agg(
-    Total_Hours=("hours_worked", "sum"),
-    Hourly_Rate=("hourly_rate", "first"),
-    Total_Salary=("Total Salary (SAR)", "sum")
-).reset_index()
+        summary_df = df.groupby("employee").agg(
+            Total_Hours=("hours_worked", "sum"),
+            Hourly_Rate=("hourly_rate", "first"),
+            Total_Salary=("Total Salary (SAR)", "sum")
+        ).reset_index()
         
-c1, c2 = st.columns(2)
-with c1:
-    st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
-with c2:
-    st.metric("Total Payroll", f"${summary_df['Total_Salary'].sum():,.2f}")
-        
-st.markdown("---")
-st.dataframe(
-    summary_df,
-    column_config={
-        "employee": "Employee",
-        "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
-        "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
-        "Total_Salary": st.column_config.NumberColumn("Total Pay (SAR)", format="SAR %.2f")
-    },
-    use_container_width=True,
-    hide_index=True
-)
-else:
-    st.info("No logs found. Add shift entries in the first tab!")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
+        with c2:
+            st.metric("Total Payroll", f"SAR {summary_df['Total_Salary'].sum():,.2f}")
+            
+        st.markdown("---")
+        st.dataframe(
+            summary_df,
+            column_config={
+                "employee": "Employee",
+                "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
+                "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
+                "Total_Salary": st.column_config.NumberColumn("Total Pay (SAR)", format="SAR %.2f")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No logs found. Add shift entries in the first tab!")
 
 # ---------------------------------------------------------
 # TAB 3: History & Manual Edits
