@@ -270,12 +270,12 @@ with tab2:
         with c_col2:
             end_date = st.date_input("End Date", value=today)
 
-    # Fetch and Filter Data
+    # Directly query total hours logged in history (timecards_v3)
     if selected_payroll_emp == "All Employees":
-        df = pd.read_sql_query("SELECT * FROM timecards_v3", conn)
+        df = pd.read_sql_query("SELECT employee, work_date, total_hours FROM timecards_v3", conn)
     else:
         df = pd.read_sql_query(
-            "SELECT * FROM timecards_v3 WHERE employee = ?", 
+            "SELECT employee, work_date, total_hours FROM timecards_v3 WHERE employee = ?", 
             conn, 
             params=(selected_payroll_emp,)
         )
@@ -285,6 +285,7 @@ with tab2:
         filtered_df = df[(df["work_date"] >= start_date) & (df["work_date"] <= end_date)]
         
         if not filtered_df.empty:
+            # Aggregate total hours per employee from history records
             summary_df = filtered_df.groupby("employee").agg(
                 Total_Hours=("total_hours", "sum")
             ).reset_index()
@@ -293,20 +294,20 @@ with tab2:
             summary_df["Total_Pay"] = summary_df["Total_Hours"] * hourly_rate_input
             
             st.markdown("---")
-            st.caption(f"Showing total hours from **{start_date}** to **{end_date}**")
+            st.caption(f"Pulled hours history from **{start_date}** to **{end_date}**")
             
             m1, m2 = st.columns(2)
             with m1:
-                st.metric("Total Hours Worked", f"{summary_df['Total_Hours'].sum():.2f} hrs")
+                st.metric("Total Hours Logged", f"{summary_df['Total_Hours'].sum():.2f} hrs")
             with m2:
-                st.metric("Total Salary to Pay", f"SAR {summary_df['Total_Pay'].sum():,.2f}")
+                st.metric("Total Payroll Amount", f"SAR {summary_df['Total_Pay'].sum():,.2f}")
                 
             st.markdown("### 📋 Final Payout Breakdown")
             st.dataframe(
                 summary_df,
                 column_config={
                     "employee": "Employee Name",
-                    "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
+                    "Total_Hours": st.column_config.NumberColumn("Total Hours (from History)", format="%.2f hrs"),
                     "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
                     "Total_Pay": st.column_config.NumberColumn("Total Salary (SAR)", format="SAR %.2f")
                 },
@@ -314,9 +315,9 @@ with tab2:
                 hide_index=True
             )
         else:
-            st.warning(f"No shift entries found between {start_date} and {end_date} for {selected_payroll_emp}.")
+            st.warning(f"No history entries found between {start_date} and {end_date} for {selected_payroll_emp}.")
     else:
-        st.info("No shift logs found yet.")
+        st.info("No history logs found in database.")
 
 # ---------------------------------------------------------
 # TAB 3: History & Manual Edits
