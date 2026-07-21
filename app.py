@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 import os
+import time
 from PIL import Image
 
 # ==========================================
@@ -46,14 +47,32 @@ st.markdown("""
 # 2. CONFIG & SESSION STATE INITIALIZATION
 # ==========================================
 APP_PASSWORD = "8443"
-HOURLY_RATE = 10.0  # 10 SAR/hr
+HOURLY_RATE = 10.0          # 10 SAR/hr
+AUTO_LOCK_SECONDS = 600     # 10 minutes (10 * 60 seconds)
 
+# Always default to LOCKED when the app is first opened
 if "app_locked" not in st.session_state:
-    st.session_state["app_locked"] = False
+    st.session_state["app_locked"] = True
 
+# Track last activity timestamp for 10-minute auto-lock
+if "last_activity" not in st.session_state:
+    st.session_state["last_activity"] = time.time()
+
+# Auto-lock check (If active time > 10 mins, automatically re-lock)
+if not st.session_state["app_locked"]:
+    elapsed_time = time.time() - st.session_state["last_activity"]
+    if elapsed_time > AUTO_LOCK_SECONDS:
+        st.session_state["app_locked"] = True
+        st.toast("⚠️ App locked due to 10 minutes of inactivity.", icon="🔒")
+    else:
+        # Update activity timestamp on interaction
+        st.session_state["last_activity"] = time.time()
+
+# Employee Roster
 if "employees" not in st.session_state:
     st.session_state["employees"] = ["Remson", "Ali", "Ahmed"]
 
+# Shift Logs Database
 if "logs" not in st.session_state:
     st.session_state["logs"] = pd.DataFrame([
         {"Employee": "Remson", "Date": "2026-07-04", "M. In": "11:00", "M. Out": "13:00", "E. In": "ABSENT", "E. Out": "ABSENT"},
@@ -92,12 +111,11 @@ def calculate_row_hours(row):
 
 
 # ==========================================
-# 4. TOP HEADER (LOGO.png, TITLE & LOCK)
+# 4. TOP HEADER (LOGO, TITLE & LOCK BUTTON)
 # ==========================================
 col_logo, col_title, col_lock = st.columns([1.2, 4, 1])
 
 with col_logo:
-    # Explicitly check for LOGO.png (or fallbacks)
     logo_file = None
     for f in ["LOGO.png", "logo.png", "LOGO.JPG", "LOGO.jpg"]:
         if os.path.exists(f):
@@ -108,7 +126,7 @@ with col_logo:
         img = Image.open(logo_file)
         st.image(img, use_container_width=True)
     else:
-        st.warning("⚠️ LOGO.png not found in repository root")
+        st.warning("⚠️ LOGO.png not found")
 
 with col_title:
     st.markdown("""
@@ -132,13 +150,15 @@ st.divider()
 # ==========================================
 if st.session_state["app_locked"]:
     st.subheader("🔒 App Locked")
+    st.info("Enter the passcode to gain access.")
     
     lock_col1, lock_col2 = st.columns([1, 2])
     with lock_col1:
-        pwd_input = st.text_input("Enter Passcode to Unlock:", type="password", key="pwd_input")
+        pwd_input = st.text_input("Passcode:", type="password", key="pwd_input")
         if st.button("Unlock App", type="primary"):
             if pwd_input == APP_PASSWORD:
                 st.session_state["app_locked"] = False
+                st.session_state["last_activity"] = time.time()  # Reset 10 min timer on unlock
                 st.success("App unlocked successfully!")
                 st.rerun()
             else:
@@ -215,7 +235,7 @@ else:
             df_filtered = df_logs[df_logs["Employee"] == selected_emp].copy()
 
             if not df_filtered.empty:
-                # 1. SEQUENTIAL SERIAL NUMBERS (Start clean at 1, 2, 3...)
+                # 1. SEQUENTIAL SERIAL NUMBERS (1, 2, 3...)
                 df_filtered = df_filtered.drop(columns=["ID"], errors="ignore")
                 df_display = df_filtered.reset_index(drop=True)
                 df_display.index = df_display.index + 1  # 1-based index
