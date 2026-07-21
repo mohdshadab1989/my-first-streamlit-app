@@ -22,14 +22,19 @@ except Exception:
 
 st.markdown("---")
 
-# --- Employee List ---
-EMPLOYEE_LIST = ["Alex Johnson", "John Doe", "Mohammed Ali"]  # <--- Update staff names here!
-
 # --- Database Setup (SQLite) ---
 conn = sqlite3.connect("timesheets.db", check_same_thread=False)
 c = conn.cursor()
 
-# Updated table structure to handle two shifts per day
+# Table for Employee Names
+c.execute('''
+    CREATE TABLE IF NOT EXISTS employees (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE
+    )
+''')
+
+# Table for Timecard Entries
 c.execute('''
     CREATE TABLE IF NOT EXISTS timecards_v2 (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +49,17 @@ c.execute('''
     )
 ''')
 conn.commit()
+
+# Seed default employees if table is empty
+DEFAULT_EMPLOYEES = ["Remson", "Shadab", "Manzoor", "Arial"]
+for emp in DEFAULT_EMPLOYEES:
+    c.execute("INSERT OR IGNORE INTO employees (name) VALUES (?)", (emp,))
+conn.commit()
+
+# Function to get active employee list from DB
+def get_employee_list():
+    df_emp = pd.read_sql_query("SELECT name FROM employees ORDER BY name ASC", conn)
+    return df_emp["name"].tolist()
 
 # --- Auto Cleanup: Delete records older than 90 days ---
 three_months_ago = (date.today() - timedelta(days=90)).strftime("%Y-%m-%d")
@@ -67,11 +83,28 @@ tab1, tab2, tab3 = st.tabs(["➕ Log / Edit Time", "📊 Hours & Salary", "📜 
 # TAB 1: Log or Edit Entry (Dual Shift & Dropdown)
 # ---------------------------------------------------------
 with tab1:
+    # --- Add New Employee Section ---
+    with st.expander("👤 Manage / Add New Employee"):
+        new_emp_name = st.text_input("New Employee Name", placeholder="e.g. John")
+        if st.button("Save New Employee"):
+            if new_emp_name.strip():
+                try:
+                    c.execute("INSERT INTO employees (name) VALUES (?)", (new_emp_name.strip(),))
+                    conn.commit()
+                    st.success(f"Added {new_emp_name.strip()} to employee list!")
+                    st.rerun()
+                except sqlite3.IntegrityError:
+                    st.warning("This employee already exists!")
+            else:
+                st.error("Please enter a valid name.")
+
     st.subheader("Clock In / Out Entry")
+    
+    current_employees = get_employee_list()
     
     with st.form("time_entry_form", clear_on_submit=True):
         # Dropdown selection for employee name
-        emp_name = st.selectbox("Select Employee", EMPLOYEE_LIST)
+        emp_name = st.selectbox("Select Employee", current_employees)
         hourly_rate = st.number_input("Hourly Rate (SAR)", min_value=0.0, value=25.0, step=0.50)
         entry_date = st.date_input("Date", value=date.today())
         
