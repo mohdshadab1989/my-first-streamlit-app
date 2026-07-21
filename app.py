@@ -4,7 +4,6 @@ import sqlite3
 from datetime import datetime, date, timedelta
 
 # --- Configuration Constants ---
-HOURLY_RATE = 10.0  # Fixed rate per hour (SAR)
 ADMIN_PASSWORD = "8443"
 
 # --- Page Configuration ---
@@ -239,33 +238,50 @@ with tab1:
 # ---------------------------------------------------------
 with tab2:
     st.subheader("💵 Payroll Calculation")
-    st.caption("Standard Rate: **10 SAR / hour**")
     
-    df = pd.read_sql_query("SELECT * FROM timecards_v3", conn)
+    # Filters Section
+    col_filter_emp, col_filter_rate = st.columns([2, 1])
+    
+    all_employees_payroll = ["All Employees"] + get_employee_list()
+    with col_filter_emp:
+        selected_payroll_emp = st.selectbox("🔍 Filter by Employee Name", all_employees_payroll, key="payroll_emp_select")
+        
+    with col_filter_rate:
+        hourly_rate_input = st.number_input("Hourly Rate (SAR)", value=10.0, step=0.5, min_value=0.0, format="%.2f")
+
+    # Date Range Selection
+    period_option = st.radio(
+        "Select Calculation Period:",
+        ["Last 30 Days (1 Month)", "Last 90 Days (3 Months)", "Custom Date Range"],
+        horizontal=True
+    )
+    
+    today = date.today()
+    if period_option == "Last 30 Days (1 Month)":
+        start_date = today - timedelta(days=30)
+        end_date = today
+    elif period_option == "Last 90 Days (3 Months)":
+        start_date = today - timedelta(days=90)
+        end_date = today
+    else:
+        c_col1, c_col2 = st.columns(2)
+        with c_col1:
+            start_date = st.date_input("Start Date", value=today - timedelta(days=30))
+        with c_col2:
+            end_date = st.date_input("End Date", value=today)
+
+    # Fetch and Filter Data
+    if selected_payroll_emp == "All Employees":
+        df = pd.read_sql_query("SELECT * FROM timecards_v3", conn)
+    else:
+        df = pd.read_sql_query(
+            "SELECT * FROM timecards_v3 WHERE employee = ?", 
+            conn, 
+            params=(selected_payroll_emp,)
+        )
     
     if not df.empty:
         df["work_date"] = pd.to_datetime(df["work_date"]).dt.date
-        
-        period_option = st.radio(
-            "Select Calculation Period:",
-            ["Last 30 Days (1 Month)", "Last 90 Days (3 Months)", "Custom Date Range"],
-            horizontal=True
-        )
-        
-        today = date.today()
-        if period_option == "Last 30 Days (1 Month)":
-            start_date = today - timedelta(days=30)
-            end_date = today
-        elif period_option == "Last 90 Days (3 Months)":
-            start_date = today - timedelta(days=90)
-            end_date = today
-        else:
-            c_col1, c_col2 = st.columns(2)
-            with c_col1:
-                start_date = st.date_input("Start Date", value=today - timedelta(days=30))
-            with c_col2:
-                end_date = st.date_input("End Date", value=today)
-
         filtered_df = df[(df["work_date"] >= start_date) & (df["work_date"] <= end_date)]
         
         if not filtered_df.empty:
@@ -273,17 +289,17 @@ with tab2:
                 Total_Hours=("total_hours", "sum")
             ).reset_index()
             
-            summary_df["Hourly_Rate"] = HOURLY_RATE
-            summary_df["Total_Pay"] = summary_df["Total_Hours"] * HOURLY_RATE
+            summary_df["Hourly_Rate"] = hourly_rate_input
+            summary_df["Total_Pay"] = summary_df["Total_Hours"] * hourly_rate_input
             
             st.markdown("---")
             st.caption(f"Showing total hours from **{start_date}** to **{end_date}**")
             
             m1, m2 = st.columns(2)
             with m1:
-                st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
+                st.metric("Total Hours Worked", f"{summary_df['Total_Hours'].sum():.2f} hrs")
             with m2:
-                st.metric("Total Amount to Pay", f"SAR {summary_df['Total_Pay'].sum():,.2f}")
+                st.metric("Total Salary to Pay", f"SAR {summary_df['Total_Pay'].sum():,.2f}")
                 
             st.markdown("### 📋 Final Payout Breakdown")
             st.dataframe(
@@ -291,14 +307,14 @@ with tab2:
                 column_config={
                     "employee": "Employee Name",
                     "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
-                    "Hourly_Rate": st.column_config.NumberColumn("Fixed Rate", format="SAR %.2f"),
+                    "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
                     "Total_Pay": st.column_config.NumberColumn("Total Salary (SAR)", format="SAR %.2f")
                 },
                 use_container_width=True,
                 hide_index=True
             )
         else:
-            st.warning(f"No shift entries found between {start_date} and {end_date}.")
+            st.warning(f"No shift entries found between {start_date} and {end_date} for {selected_payroll_emp}.")
     else:
         st.info("No shift logs found yet.")
 
@@ -310,7 +326,7 @@ with tab3:
     
     # Employee Filter
     all_employees = ["All Employees"] + get_employee_list()
-    selected_emp = st.selectbox("🔍 Filter by Employee Name", all_employees)
+    selected_emp = st.selectbox("🔍 Filter by Employee Name", all_employees, key="history_emp_select")
     
     # Fetch Data
     if selected_emp == "All Employees":
