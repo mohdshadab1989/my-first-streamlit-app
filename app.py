@@ -109,9 +109,9 @@ with c1:
 with c2:
     st.metric("Total Payroll", f"${summary_df['Total_Salary'].sum():,.2f}")
         
-        st.markdown("---")
-        st.dataframe(
-            summary_df,
+st.markdown("---")
+    st.dataframe(
+        summary_df,
             column_config={
                 "employee": "Employee",
                 "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
