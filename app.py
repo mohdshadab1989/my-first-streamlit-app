@@ -1,33 +1,62 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+import time
 from datetime import datetime, date, timedelta
 
 # --- Configuration Constants ---
 ADMIN_PASSWORD = "8443"
+AUTO_LOCK_SECONDS = 600  # 10 minutes (10 * 60 seconds)
 
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Al Fanateer Studio - Timecard & Payroll", 
     page_icon="📷",
-    layout="centered"
+    layout="wide"
 )
 
 # --- Header Section with Logo ---
-st.title("📷 AL FANATEER STUDIO")
-st.caption("SINCE 1995 • 'COME ONCE STAY FOREVER'")
+col_logo, col_title, col_lock = st.columns([1.2, 4, 1])
 
-try:
-    st.image("LOGO.png", width=140)
-except Exception:
-    pass
+with col_logo:
+    try:
+        st.image("LOGO.png", width=120)
+    except Exception:
+        st.write("📷")
 
-st.markdown("---")
+with col_title:
+    st.markdown("""
+        <div style='display: flex; flex-direction: column;'>
+            <span style='font-size: 26px; font-weight: 800; color: #1E293B;'>AL FANATEER STUDIO</span>
+            <span style='font-size: 13px; font-weight: 500; color: #64748B; letter-spacing: 1px;'>SINCE 1995 • COME ONCE STAY FOREVER</span>
+        </div>
+    """, unsafe_allow_html=True)
 
-# --- Screen Lock Check ---
+# --- Screen Lock & Inactivity Timer Setup ---
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
+if "last_activity" not in st.session_state:
+    st.session_state["last_activity"] = time.time()
+
+# 10-Minute Auto-Lock Check
+if st.session_state["authenticated"]:
+    elapsed_time = time.time() - st.session_state["last_activity"]
+    if elapsed_time > AUTO_LOCK_SECONDS:
+        st.session_state["authenticated"] = False
+        st.toast("⚠️ App locked due to 10 minutes of inactivity.", icon="🔒")
+    else:
+        st.session_state["last_activity"] = time.time()
+
+with col_lock:
+    if st.session_state["authenticated"]:
+        if st.button("🔒 Lock App", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.rerun()
+
+st.markdown("---")
+
+# Prompt for Password if App is Locked
 if not st.session_state["authenticated"]:
     st.subheader("🔒 App Locked")
     st.info("Please enter the password to access the app.")
@@ -39,19 +68,13 @@ if not st.session_state["authenticated"]:
         if login_btn:
             if pwd_input == ADMIN_PASSWORD:
                 st.session_state["authenticated"] = True
+                st.session_state["last_activity"] = time.time()
                 st.success("Access Granted!")
                 st.rerun()
             else:
                 st.error("Incorrect password!")
                 
     st.stop()
-
-# --- Logout Button ---
-col_head, col_logout = st.columns([3, 1])
-with col_logout:
-    if st.button("🔒 Lock App"):
-        st.session_state["authenticated"] = False
-        st.rerun()
 
 # --- Database Setup (SQLite) ---
 conn = sqlite3.connect("timesheets.db", check_same_thread=False)
@@ -103,6 +126,34 @@ def calc_shift_hours(t_in, t_out, active):
     if dt_out <= dt_in:
         dt_out += timedelta(days=1)
     return (dt_out - dt_in).total_seconds() / 3600.0
+
+def calculate_row_hours(row):
+    """Dynamically calculates working hours for a row in history view."""
+    total = 0.0
+    
+    # Morning Shift calculation
+    m_in_val = str(row.get('m_in', '')).strip()
+    m_out_val = str(row.get('m_out', '')).strip()
+    if m_in_val not in ['OFF', 'ABSENT', 'None', ''] and m_out_val not in ['OFF', 'ABSENT', 'None', '']:
+        try:
+            t_in = pd.to_datetime(m_in_val, format='%H:%M')
+            t_out = pd.to_datetime(m_out_val, format='%H:%M')
+            total += (t_out - t_in).total_seconds() / 3600.0
+        except Exception:
+            pass
+
+    # Evening Shift calculation
+    e_in_val = str(row.get('e_in', '')).strip()
+    e_out_val = str(row.get('e_out', '')).strip()
+    if e_in_val not in ['OFF', 'ABSENT', 'None', ''] and e_out_val not in ['OFF', 'ABSENT', 'None', '']:
+        try:
+            t_in = pd.to_datetime(e_in_val, format='%H:%M')
+            t_out = pd.to_datetime(e_out_val, format='%H:%M')
+            total += (t_out - t_in).total_seconds() / 3600.0
+        except Exception:
+            pass
+
+    return total
 
 # --- Tab Navigation ---
 tab1, tab2, tab3 = st.tabs(["➕ Log Time", "📊 Payroll Calculation", "📜 Edit Logs & History"])
@@ -270,7 +321,7 @@ with tab2:
         with c_col2:
             end_date = st.date_input("End Date", value=today)
 
-    # Directly query total hours logged in history (timecards_v3)
+    # Query total hours logged from history
     if selected_payroll_emp == "All Employees":
         df = pd.read_sql_query("SELECT employee, work_date, total_hours FROM timecards_v3", conn)
     else:
@@ -285,7 +336,6 @@ with tab2:
         filtered_df = df[(df["work_date"] >= start_date) & (df["work_date"] <= end_date)]
         
         if not filtered_df.empty:
-            # Aggregate total hours per employee from history records
             summary_df = filtered_df.groupby("employee").agg(
                 Total_Hours=("total_hours", "sum")
             ).reset_index()
@@ -340,43 +390,61 @@ with tab3:
         )
     
     if not df_raw.empty:
+        # 1. REMOVE ID COLUMN AND RESET INDEX (Start clean at 1, 2, 3...)
+        df_display = df_raw.drop(columns=["id", "total_hours"], errors="ignore").reset_index(drop=True)
+        df_display.index = df_display.index + 1  # 1-based sequential indexing
+
+        # 2. DYNAMICALLY CALCULATE TOTAL HOURS FOR FILTERED RECORDS
+        calculated_hours = df_display.apply(calculate_row_hours, axis=1)
+        total_hours_sum = calculated_hours.sum()
+
+        # Display Editable Data Table
         edited_df = st.data_editor(
-            df_raw,
+            df_display,
             column_config={
-                "id": "ID",
                 "employee": "Employee",
                 "work_date": "Date",
                 "m_in": "M. In",
                 "m_out": "M. Out",
                 "e_in": "E. In",
-                "e_out": "E. Out",
-                "total_hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs")
+                "e_out": "E. Out"
             },
             num_rows="dynamic",
             key="timecard_editor",
             use_container_width=True
         )
         
-        if st.button("Save Changes to Database"):
-            if selected_emp == "All Employees":
-                # Update all entries
-                c.execute("DELETE FROM timecards_v3")
-                for _, row in edited_df.iterrows():
-                    c.execute('''
-                        INSERT INTO timecards_v3 (id, employee, work_date, m_in, m_out, e_in, e_out, total_hours)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (row['id'], row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
-            else:
-                # Update only selected employee entries
-                c.execute("DELETE FROM timecards_v3 WHERE employee = ?", (selected_emp,))
-                for _, row in edited_df.iterrows():
-                    c.execute('''
-                        INSERT INTO timecards_v3 (id, employee, work_date, m_in, m_out, e_in, e_out, total_hours)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (row['id'], row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
-            
-            conn.commit()
-            st.success("Database updated successfully!")
-            st.rerun()
+        st.write("")
+        
+        # 3. SAVE BUTTON AND TOTAL HOURS METRIC AT BOTTOM RIGHT
+        col_save, col_total = st.columns([3, 1])
+        
+        with col_save:
+            if st.button("Save Changes to Database", type="primary"):
+                # Calculate final hours row-by-row before inserting into database
+                edited_df["total_hours"] = edited_df.apply(calculate_row_hours, axis=1)
+                
+                if selected_emp == "All Employees":
+                    c.execute("DELETE FROM timecards_v3")
+                    for _, row in edited_df.iterrows():
+                        c.execute('''
+                            INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+                else:
+                    c.execute("DELETE FROM timecards_v3 WHERE employee = ?", (selected_emp,))
+                    for _, row in edited_df.iterrows():
+                        c.execute('''
+                            INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+                
+                conn.commit()
+                st.success("Database updated successfully!")
+                st.rerun()
+
+        with col_total:
+            st.metric(label="TOTAL HOURS", value=f"{total_hours_sum:.2f} hrs")
+
     else:
         st.info(f"No records found for {selected_emp}.")
