@@ -11,13 +11,12 @@ st.set_page_config(
 )
 
 # --- Admin Password Configuration ---
-ADMIN_PASSWORD = "8443"  # <--- Updated Password!
+ADMIN_PASSWORD = "8443"
 
 # --- Header Section with Logo ---
 st.title("📷 AL FANATEER STUDIO")
 st.caption("SINCE 1995 • 'COME ONCE STAY FOREVER'")
 
-# Display logo if uploaded
 try:
     st.image("LOGO.png", width=140)
 except Exception:
@@ -45,9 +44,9 @@ if not st.session_state["authenticated"]:
             else:
                 st.error("Incorrect password!")
                 
-    st.stop()  # Stops the rest of the script from loading until unlocked
+    st.stop()
 
-# --- Logout Button (Top Right / Header) ---
+# --- Logout Button ---
 col_head, col_logout = st.columns([3, 1])
 with col_logout:
     if st.button("🔒 Lock App"):
@@ -68,10 +67,9 @@ c.execute('''
 
 # Table for Timecard Entries
 c.execute('''
-    CREATE TABLE IF NOT EXISTS timecards_v2 (
+    CREATE TABLE IF NOT EXISTS timecards_v3 (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         employee TEXT,
-        hourly_rate REAL,
         work_date TEXT,
         m_in TEXT,
         m_out TEXT,
@@ -82,23 +80,21 @@ c.execute('''
 ''')
 conn.commit()
 
-# Seed default employees if table is empty
+# Seed default employees if empty
 DEFAULT_EMPLOYEES = ["Remson", "Shadab", "Manzoor", "Arial"]
 for emp in DEFAULT_EMPLOYEES:
     c.execute("INSERT OR IGNORE INTO employees (name) VALUES (?)", (emp,))
 conn.commit()
 
-# Function to get active employee list from DB
 def get_employee_list():
     df_emp = pd.read_sql_query("SELECT name FROM employees ORDER BY name ASC", conn)
     return df_emp["name"].tolist()
 
 # --- Auto Cleanup: Delete records older than 90 days ---
 three_months_ago = (date.today() - timedelta(days=90)).strftime("%Y-%m-%d")
-c.execute("DELETE FROM timecards_v2 WHERE work_date < ?", (three_months_ago,))
+c.execute("DELETE FROM timecards_v3 WHERE work_date < ?", (three_months_ago,))
 conn.commit()
 
-# Helper function to calculate shift duration in hours
 def calc_shift_hours(t_in, t_out, active):
     if not active:
         return 0.0
@@ -109,10 +105,10 @@ def calc_shift_hours(t_in, t_out, active):
     return (dt_out - dt_in).total_seconds() / 3600.0
 
 # --- Tab Navigation ---
-tab1, tab2, tab3 = st.tabs(["➕ Log / Edit Time", "📊 Payroll Summary", "📜 Edit Logs & History"])
+tab1, tab2, tab3 = st.tabs(["➕ Log Time", "📊 Payroll Calculation", "📜 Edit Logs & History"])
 
 # ---------------------------------------------------------
-# TAB 1: Log Entry & Add Employee
+# TAB 1: Daily Log Entry
 # ---------------------------------------------------------
 with tab1:
     st.subheader("Clock In / Out Entry")
@@ -120,14 +116,12 @@ with tab1:
     current_employees = get_employee_list()
     
     with st.form("time_entry_form", clear_on_submit=True):
-        # Dropdown selection for employee name
         emp_name = st.selectbox("Select Employee", current_employees)
-        hourly_rate = st.number_input("Hourly Rate (SAR)", min_value=0.0, value=25.0, step=0.50)
         entry_date = st.date_input("Date", value=date.today())
         
         st.markdown("---")
         
-        # Morning Shift Section
+        # Morning Shift
         st.markdown("**🌅 Morning Shift**")
         has_morning = st.checkbox("Worked Morning Shift?", value=True)
         col_m_in, col_m_out = st.columns(2)
@@ -138,7 +132,7 @@ with tab1:
             
         st.markdown("---")
         
-        # Evening Shift Section
+        # Evening Shift
         st.markdown("**🌙 Evening Shift**")
         has_evening = st.checkbox("Worked Evening Shift?", value=True)
         col_e_in, col_e_out = st.columns(2)
@@ -164,15 +158,14 @@ with tab1:
                 e_out_str = e_out.strftime("%H:%M") if has_evening else "--"
                 
                 c.execute('''
-                    INSERT INTO timecards_v2 (employee, hourly_rate, work_date, m_in, m_out, e_in, e_out, total_hours)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (emp_name, hourly_rate, entry_date.strftime("%Y-%m-%d"), m_in_str, m_out_str, e_in_str, e_out_str, tot_hrs))
+                    INSERT INTO timecards_v3 (employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (emp_name, entry_date.strftime("%Y-%m-%d"), m_in_str, m_out_str, e_in_str, e_out_str, tot_hrs))
                 conn.commit()
-                st.success(f"Logged {tot_hrs:.2f} total hours for {emp_name} on {entry_date}!")
+                st.success(f"Logged {tot_hrs:.2f} hours for {emp_name} on {entry_date}!")
 
     st.markdown("---")
     
-    # --- Add New Employee Section ---
     with st.expander("👤 Manage / Add New Employee"):
         new_emp_name = st.text_input("New Employee Name", placeholder="e.g. John")
         if st.button("Save New Employee"):
@@ -188,42 +181,90 @@ with tab1:
                     st.warning("This employee already exists!")
 
 # ---------------------------------------------------------
-# TAB 2: Payroll Summary
+# TAB 2: Payroll Calculation (Filter Period & Put Rate)
 # ---------------------------------------------------------
 with tab2:
-    st.subheader("Salary & Hours Summary")
+    st.subheader("💵 Payroll Calculation")
     
-    df = pd.read_sql_query("SELECT * FROM timecards_v2", conn)
+    df = pd.read_sql_query("SELECT * FROM timecards_v3", conn)
     
     if not df.empty:
-        df["Total Salary (SAR)"] = df["total_hours"] * df["hourly_rate"]
-
-        summary_df = df.groupby("employee").agg(
-            Total_Hours=("total_hours", "sum"),
-            Hourly_Rate=("hourly_rate", "first"),
-            Total_Salary=("Total Salary (SAR)", "sum")
-        ).reset_index()
+        df["work_date"] = pd.to_datetime(df["work_date"]).dt.date
         
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("Total Hours (All Staff)", f"{summary_df['Total_Hours'].sum():.2f} hrs")
-        with c2:
-            st.metric("Total Payroll", f"SAR {summary_df['Total_Salary'].sum():,.2f}")
-            
-        st.markdown("---")
-        st.dataframe(
-            summary_df,
-            column_config={
-                "employee": "Employee",
-                "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
-                "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
-                "Total_Salary": st.column_config.NumberColumn("Total Pay (SAR)", format="SAR %.2f")
-            },
-            use_container_width=True,
-            hide_index=True
+        # Period Filter Selection
+        period_option = st.radio(
+            "Select Calculation Period:",
+            ["Last 30 Days (1 Month)", "Last 90 Days (3 Months)", "Custom Date Range"],
+            horizontal=True
         )
+        
+        today = date.today()
+        if period_option == "Last 30 Days (1 Month)":
+            start_date = today - timedelta(days=30)
+            end_date = today
+        elif period_option == "Last 90 Days (3 Months)":
+            start_date = today - timedelta(days=90)
+            end_date = today
+        else:
+            c_col1, c_col2 = st.columns(2)
+            with c_col1:
+                start_date = st.date_input("Start Date", value=today - timedelta(days=30))
+            with c_col2:
+                end_date = st.date_input("End Date", value=today)
+
+        # Filter dataframe by selected period
+        filtered_df = df[(df["work_date"] >= start_date) & (df["work_date"] <= end_date)]
+        
+        if not filtered_df.empty:
+            summary_df = filtered_df.groupby("employee").agg(
+                Total_Hours=("total_hours", "sum")
+            ).reset_index()
+            
+            # Default rate set to 0.0 so you can enter whatever you need at payout time
+            summary_df["Hourly_Rate"] = 25.0  
+            
+            st.markdown("---")
+            st.markdown("### ✍️ Enter Hourly Rate to Calculate Pay")
+            st.caption(f"Showing total hours from **{start_date}** to **{end_date}**")
+            
+            edited_rates = st.data_editor(
+                summary_df,
+                column_config={
+                    "employee": st.column_config.Column("Employee", disabled=True),
+                    "Total_Hours": st.column_config.NumberColumn("Total Hours Worked", format="%.2f hrs", disabled=True),
+                    "Hourly_Rate": st.column_config.NumberColumn("Hourly Rate (SAR)", format="SAR %.2f", min_value=0.0, step=0.50)
+                },
+                use_container_width=True,
+                hide_index=True,
+                key="calc_rate_editor"
+            )
+            
+            # Instant calculation
+            edited_rates["Total_Pay"] = edited_rates["Total_Hours"] * edited_rates["Hourly_Rate"]
+            
+            st.markdown("---")
+            m1, m2 = st.columns(2)
+            with m1:
+                st.metric("Total Hours (All Staff)", f"{edited_rates['Total_Hours'].sum():.2f} hrs")
+            with m2:
+                st.metric("Total Amount to Pay", f"SAR {edited_rates['Total_Pay'].sum():,.2f}")
+                
+            st.markdown("### 📋 Final Payout Breakdown")
+            st.dataframe(
+                edited_rates,
+                column_config={
+                    "employee": "Employee Name",
+                    "Total_Hours": st.column_config.NumberColumn("Total Hours", format="%.2f hrs"),
+                    "Hourly_Rate": st.column_config.NumberColumn("Rate (SAR)", format="SAR %.2f"),
+                    "Total_Pay": st.column_config.NumberColumn("Total Salary (SAR)", format="SAR %.2f")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.warning(f"No shift entries found between {start_date} and {end_date}.")
     else:
-        st.info("No logs found. Add shift entries in the first tab!")
+        st.info("No shift logs found yet.")
 
 # ---------------------------------------------------------
 # TAB 3: History & Manual Edits
@@ -231,7 +272,7 @@ with tab2:
 with tab3:
     st.subheader("3-Month Shift Log & Manual Edits")
     
-    df_raw = pd.read_sql_query("SELECT * FROM timecards_v2 ORDER BY work_date DESC", conn)
+    df_raw = pd.read_sql_query("SELECT * FROM timecards_v3 ORDER BY work_date DESC", conn)
     
     if not df_raw.empty:
         edited_df = st.data_editor(
@@ -239,7 +280,6 @@ with tab3:
             column_config={
                 "id": "ID",
                 "employee": "Employee",
-                "hourly_rate": "Rate (SAR)",
                 "work_date": "Date",
                 "m_in": "M. In",
                 "m_out": "M. Out",
@@ -253,12 +293,12 @@ with tab3:
         )
         
         if st.button("Save Changes to Database"):
-            c.execute("DELETE FROM timecards_v2")
+            c.execute("DELETE FROM timecards_v3")
             for _, row in edited_df.iterrows():
                 c.execute('''
-                    INSERT INTO timecards_v2 (id, employee, hourly_rate, work_date, m_in, m_out, e_in, e_out, total_hours)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (row['id'], row['employee'], row['hourly_rate'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
+                    INSERT INTO timecards_v3 (id, employee, work_date, m_in, m_out, e_in, e_out, total_hours)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (row['id'], row['employee'], row['work_date'], row['m_in'], row['m_out'], row['e_in'], row['e_out'], row['total_hours']))
             conn.commit()
             st.success("Database updated successfully!")
             st.rerun()
