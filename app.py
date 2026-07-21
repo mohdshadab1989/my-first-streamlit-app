@@ -26,9 +26,9 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         text-align: center;
-        padding-bottom: 20px;
+        padding-bottom: 15px;
         border-bottom: 2px solid #D4AF37;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
     }
     .header-title {
         color: #D4AF37;
@@ -82,9 +82,9 @@ st.markdown("""
     </div>
 """, unsafe_allow_shortcut=True)
 
-# Optionally display the logo image centered if available in repository
+# Display the uploaded PNG logo centered
 try:
-    st.image("LOGO.jpg", width=140)
+    st.image("LOGO.png", width=140)
 except Exception:
     pass
 
@@ -141,6 +141,7 @@ with tab1:
                 datetime_in = datetime.combine(entry_date, time_in)
                 datetime_out = datetime.combine(entry_date, time_out)
                 
+                # Handle shifts spanning midnight
                 if datetime_out <= datetime_in:
                     datetime_out += timedelta(days=1)
                     
