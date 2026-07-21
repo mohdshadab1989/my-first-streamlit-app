@@ -9,7 +9,7 @@ from PIL import Image
 col_logo, col_title, col_lock = st.columns([1.5, 4, 1])
 
 with col_logo:
-    # Try loading LOGO.jpg or logo.jpg
+    # Try loading LOGO.png or logo.jpg
     logo_filename = None
     for file in ["LOGO.jpg", "logo.jpg", "LOGO.jpeg", "logo.png"]:
         if os.path.exists(file):
