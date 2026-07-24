@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 
 # --- Configuration Constants ---
 ADMIN_PASSWORD = "8443"
-AUTO_LOCK_SECONDS = 600  # 10 minutes (10 * 60 seconds)
+AUTO_LOCK_SECONDS = 600   # 10 minutes (10 * 60 seconds)
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -108,6 +108,30 @@ DEFAULT_EMPLOYEES = ["Remson", "Shadab", "Manzoor", "Arial"]
 for emp in DEFAULT_EMPLOYEES:
     c.execute("INSERT OR IGNORE INTO employees (name) VALUES (?)", (emp,))
 conn.commit()
+
+# --- Database Backup & Recovery Utility (Sidebar) ---
+with st.sidebar:
+    st.markdown("### 💾 Data Backup & Recovery")
+    st.info("Download a backup of your database regularly to prevent data loss if the cloud server resets.")
+    
+    try:
+        with open("timesheets.db", "rb") as f:
+            st.download_button(
+                label="📥 Download Database Backup",
+                data=f,
+                file_name=f"timesheets_backup_{date.today()}.db",
+                mime="application/octet-stream"
+            )
+    except Exception:
+        pass
+
+    uploaded_backup = st.file_uploader("📤 Restore Database from Backup", type=["db"])
+    if uploaded_backup is not None:
+        if st.button("⚠️ Confirm & Overwrite Database"):
+            with open("timesheets.db", "wb") as f:
+                f.write(uploaded_backup.getbuffer())
+            st.success("Database restored successfully! Please refresh the page.")
+            st.rerun()
 
 def get_employee_list():
     df_emp = pd.read_sql_query("SELECT name FROM employees ORDER BY name ASC", conn)
