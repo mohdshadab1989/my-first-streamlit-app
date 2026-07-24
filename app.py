@@ -3,6 +3,7 @@ import pandas as pd
 import sqlite3
 import time
 from datetime import datetime, date, timedelta
+from io import BytesIO
 
 # --- Configuration Constants ---
 ADMIN_PASSWORD = "8443"
@@ -108,6 +109,14 @@ DEFAULT_EMPLOYEES = ["Remson", "Shadab", "Manzoor", "Arial"]
 for emp in DEFAULT_EMPLOYEES:
     c.execute("INSERT OR IGNORE INTO employees (name) VALUES (?)", (emp,))
 conn.commit()
+
+# --- Helper Functions for Excel Generation ---
+def to_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Full History')
+    processed_data = output.getvalue()
+    return processed_data
 
 # --- Database Backup & Recovery Utility (Sidebar) ---
 with st.sidebar:
@@ -420,19 +429,52 @@ with tab2:
 with tab3:
     st.subheader("3-Month Shift Log & Manual Edits")
     
-    # Employee Filter
+    # Employee Filter & Excel Download Button Row
+    col_filter_ui, col_dl_ui = st.columns([2, 1])
+    
     all_employees = ["All Employees"] + get_employee_list()
-    selected_emp = st.selectbox("🔍 Filter by Employee Name", all_employees, key="history_emp_select")
+    with col_filter_ui:
+        selected_emp = st.selectbox("🔍 Filter by Employee Name", all_employees, key="history_emp_select")
     
     # Fetch Data sorted by date ASCENDING
     if selected_emp == "All Employees":
         df_raw = pd.read_sql_query("SELECT * FROM timecards_v3 ORDER BY work_date ASC", conn)
+        excel_export_df = pd.read_sql_query("SELECT employee, work_date, m_in, m_out, e_in, e_out, total_hours FROM timecards_v3 ORDER BY work_date ASC", conn)
     else:
         df_raw = pd.read_sql_query(
             "SELECT * FROM timecards_v3 WHERE employee = ? ORDER BY work_date ASC", 
             conn, 
             params=(selected_emp,)
         )
+        excel_export_df = pd.read_sql_query(
+            "SELECT employee, work_date, m_in, m_out, e_in, e_out, total_hours FROM timecards_v3 WHERE employee = ? ORDER BY work_date ASC", 
+            conn, 
+            params=(selected_emp,)
+        )
+
+    # Format Excel columns nicely for download
+    if not excel_export_df.empty:
+        excel_export_df["Total Hours (HH:MM)"] = excel_export_df["total_hours"].apply(format_hours_to_hhmm)
+        excel_export_df = excel_export_df.rename(columns={
+            "employee": "Employee Name",
+            "work_date": "Date",
+            "m_in": "Morning In",
+            "m_out": "Morning Out",
+            "e_in": "Evening In",
+            "e_out": "Evening Out",
+            "total_hours": "Total Hours (Decimal)"
+        })
+        excel_data = to_excel(excel_export_df)
+        
+        with col_dl_ui:
+            st.write("") # Spacer alignment
+            st.download_button(
+                label="📥 Download Excel (.xlsx)",
+                data=excel_data,
+                file_name=f"employee_timecard_history_{date.today()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
     
     if not df_raw.empty:
         df_display = df_raw.copy()
