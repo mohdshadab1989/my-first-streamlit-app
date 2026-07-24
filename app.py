@@ -250,13 +250,17 @@ with tab1:
 
         st.markdown("---")
 
-        # Quick Full-Day Overrides
+        # Quick Full-Day Overrides (Removed clear_on_submit lock state traps by omitting persistent form key defaults)
         st.markdown("**⚡ Full Day Overrides (Optional)**")
         status_col1, status_col2 = st.columns(2)
         with status_col1:
-            is_full_day_off = st.checkbox("🌴 Entire Day OFF")
+            is_full_day_off = st.checkbox(
+                "🌴 Entire Day OFF", key="chk_day_off"
+            )
         with status_col2:
-            is_full_day_absent = st.checkbox("❌ Entire Day ABSENT")
+            is_full_day_absent = st.checkbox(
+                "❌ Entire Day ABSENT", key="chk_day_absent"
+            )
 
         st.markdown("---")
 
@@ -266,6 +270,7 @@ with tab1:
             "Morning Shift Status",
             ["Worked", "Shift Off", "Absent"],
             disabled=(is_full_day_off or is_full_day_absent),
+            key="sel_m_status",
         )
 
         col_m_in, col_m_out = st.columns(2)
@@ -278,6 +283,7 @@ with tab1:
                     or is_full_day_absent
                     or m_status != "Worked"
                 ),
+                key="time_m_in",
             )
         with col_m_out:
             m_out = st.time_input(
@@ -288,6 +294,7 @@ with tab1:
                     or is_full_day_absent
                     or m_status != "Worked"
                 ),
+                key="time_m_out",
             )
 
         st.markdown("---")
@@ -298,6 +305,7 @@ with tab1:
             "Evening Shift Status",
             ["Worked", "Shift Off", "Absent"],
             disabled=(is_full_day_off or is_full_day_absent),
+            key="sel_e_status",
         )
 
         col_e_in, col_e_out = st.columns(2)
@@ -310,6 +318,7 @@ with tab1:
                     or is_full_day_absent
                     or e_status != "Worked"
                 ),
+                key="time_e_in",
             )
         with col_e_out:
             e_out = st.time_input(
@@ -320,6 +329,7 @@ with tab1:
                     or is_full_day_absent
                     or e_status != "Worked"
                 ),
+                key="time_e_out",
             )
 
         st.markdown("---")
@@ -343,9 +353,10 @@ with tab1:
                     ),
                 )
                 conn.commit()
-                st.error(
+                st.success(
                     f"Logged Full Day ABSENT for {emp_name} on {entry_date}."
                 )
+                st.rerun()
             elif is_full_day_off:
                 c.execute(
                     """
@@ -366,6 +377,7 @@ with tab1:
                 st.success(
                     f"Logged Full Day OFF for {emp_name} on {entry_date}!"
                 )
+                st.rerun()
             else:
                 # Process Morning Shift values
                 if m_status == "Worked":
@@ -416,6 +428,7 @@ with tab1:
                 st.success(
                     f"Logged entry for {emp_name} on {entry_date} ({format_hours_to_hhmm(tot_hrs)} hrs worked)."
                 )
+                st.rerun()
 
     st.markdown("---")
 
@@ -624,7 +637,7 @@ with tab3:
             st.write("")  # Spacer alignment
             st.download_button(
                 label="📥 Download Excel (.xlsx)",
-                data=excel_data,
+                data=data := excel_data,
                 file_name=f"employee_timecard_history_{date.today()}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
@@ -741,4 +754,4 @@ with tab3:
             )
 
     else:
-        st.info(f"No records found for {selected_emp}.")
+        st.info(f"No records found for the selected employee.")
