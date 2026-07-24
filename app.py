@@ -250,7 +250,7 @@ with tab1:
 
         st.markdown("---")
 
-        # Quick Full-Day Overrides (Removed clear_on_submit lock state traps by omitting persistent form key defaults)
+        # Quick Full-Day Overrides
         st.markdown("**⚡ Full Day Overrides (Optional)**")
         status_col1, status_col2 = st.columns(2)
         with status_col1:
@@ -637,7 +637,7 @@ with tab3:
             st.write("")  # Spacer alignment
             st.download_button(
                 label="📥 Download Excel (.xlsx)",
-                data=data := excel_data,
+                data=excel_data,
                 file_name=f"employee_timecard_history_{date.today()}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
